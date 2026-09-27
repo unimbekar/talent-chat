@@ -8,6 +8,8 @@ This repository is the recruiting assistant for [Janus Soft Inc.](https://www.ja
 | [SPEC.md](SPEC.md) | Product specification. Section 5 records both the stored rank score and the line coverage the recruiter sees. |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How the pieces fit, including the Review screen. |
 | [postgres.md](postgres.md) | Database setup: connect, read, purge, and troubleshoot `talent`. |
+| [llm.md](llm.md) | The chat model (`qwen3.6` on Ollama) and the FastEmbed embedding model. |
+| [workflow.md](workflow.md) | How `/chat` and `/admin` reach each API, and which container handles the call. |
 | [PROMPT.md](PROMPT.md) | The original Phase 1 kickoff. The application is already in this repository. |
 | `docs/diagrams/` | Diagram sources (`.mmd`) and rendered PNGs. Re-render with `scripts/render-diagrams.sh`. |
 | `tests/fixtures/careers/` | Snapshot of the live listing and detail pages (2026-09-27), used as parser fixtures. |

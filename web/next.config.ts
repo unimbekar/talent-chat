@@ -7,6 +7,9 @@ const frameAncestors = ["'self'", ancestor].filter(Boolean).join(" ");
 
 const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(__dirname),
+  experimental: {
+    proxyTimeout: 120_000,
+  },
   async rewrites() {
     return [{ source: "/api/:path*", destination: `${api}/:path*` }];
   },

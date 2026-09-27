@@ -16,6 +16,14 @@ services:
       timeout: 5s
       retries: 20
 
+  ollama-bridge:
+    image: talent-chat-api
+    network_mode: host
+    restart: unless-stopped
+    entrypoint: ["/app/.venv/bin/python", "/bridge/ollama-bridge.py"]
+    volumes:
+      - ./scripts/ollama-bridge.py:/bridge/ollama-bridge.py:ro
+
   api:
     build:
       context: .

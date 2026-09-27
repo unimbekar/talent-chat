@@ -175,10 +175,66 @@ def test_public_chat_filters_refusal_and_llm_down(db):
         assert body["jobs"]
         assert {job["location"] for job in body["jobs"]} == {"Chantilly, VA"}
 
+        follow = client.post(
+            "/public/chat",
+            json={"message": "Are these positions require SME experience", "prior_codes": ["A1001"]},
+        )
+        assert follow.status_code == 200
+        assert [job["requisition_code"] for job in follow.json()["jobs"]] == ["A1001"]
+        assert follow.json()["notice"] is None
+        assert any("SME" in prompt["user"] and "A1001" in prompt["user"] for prompt in llm.prompts)
+
+        still_there = client.post(
+            "/public/chat",
+            json={"message": "Do these require Java", "prior_codes": ["A1001"]},
+        )
+        assert [job["requisition_code"] for job in still_there.json()["jobs"]] == ["A1001"]
+
         everything = client.post("/public/chat", json={"message": "show me all positions", "prior_codes": []})
         assert everything.status_code == 200
         listed = {job["requisition_code"] for job in everything.json()["jobs"]}
         assert listed == {"A1001", "A1003", "N3001"}
+
+        phrase = client.post(
+            "/public/chat",
+            json={"message": "Would like to see all AWS jobs in McLean", "prior_codes": []},
+        )
+        phrase_codes = {job["requisition_code"] for job in phrase.json()["jobs"]}
+        assert "N3001" in phrase_codes
+        assert "A1003" not in phrase_codes
+        assert "G2002" not in phrase_codes
+
+        outside = client.post(
+            "/public/chat",
+            json={"message": "Find me all jobs thar are NOT in Mclean", "prior_codes": []},
+        )
+        outside_jobs = outside.json()["jobs"]
+        outside_codes = {job["requisition_code"] for job in outside_jobs}
+        outside_cities = {job["location"] for job in outside_jobs}
+        assert "N3001" not in outside_codes
+        assert "G2002" not in outside_codes
+        assert "A1001" in outside_codes
+        assert "A1003" in outside_codes
+        assert "McLean, VA" not in outside_cities
+        assert {"Chantilly, VA", "Herndon, VA"} <= outside_cities
+
+        aws = client.post("/public/chat", json={"message": "get me all AWS jobs", "prior_codes": []})
+        aws_codes = aws.json()["prior_codes"]
+        assert "N3001" in aws_codes
+        assert "A1003" in aws_codes
+        nearby = client.post(
+            "/public/chat",
+            json={"message": "what jobs are closest to Bethesda Maryland within 10", "prior_codes": aws_codes},
+        )
+        assert [job["requisition_code"] for job in nearby.json()["jobs"]] == ["N3001"]
+        assert nearby.json()["jobs"][0]["distance_miles"] < 10
+        wider = client.post(
+            "/public/chat",
+            json={"message": "what jobs are closest to Bethesda Maryland within 20", "prior_codes": aws_codes},
+        )
+        wider_codes = [job["requisition_code"] for job in wider.json()["jobs"]]
+        assert wider_codes[0] == "N3001"
+        assert "A1003" in wider_codes
 
         skills = client.post("/public/chat", json={"message": "Java and AWS", "prior_codes": []})
         codes = {job["requisition_code"] for job in skills.json()["jobs"]}

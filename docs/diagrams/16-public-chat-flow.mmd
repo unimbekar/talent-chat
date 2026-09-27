@@ -1,0 +1,31 @@
+sequenceDiagram
+    autonumber
+    actor V as Visitor
+    participant W as web container
+    participant A as api container
+    participant DB as postgres as app_public
+    participant E as FastEmbed in api
+    participant B as ollama-bridge
+    participant O as Ollama qwen3.6
+
+    V->>W: GET /chat
+    W-->>V: chat page HTML
+    V->>W: GET /api/public/config
+    Note over W,A: Next rewrites this to GET /public/config
+    W->>A: GET /public/config
+    A-->>V: company name and careers URL
+    V->>W: POST /api/public/chat
+    Note over V,W: body is the question plus prior_codes
+    W->>A: POST /public/chat
+    A->>A: refuse people questions before any SQL
+    A->>A: 30 questions per hour per IP
+    A->>DB: open jobs that match the parsed question
+    DB-->>A: the job set SQL allowed
+    opt ordinary skill search
+        A->>E: embed the question and rerank that set
+    end
+    A->>B: chat completion, think off, 90 second timeout
+    B->>O: forward to 127.0.0.1:11434
+    O-->>A: two to four sentences
+    A-->>V: answer, job cards, prior_codes
+    Note over V,W: The server stores no chat history. The browser keeps prior_codes.

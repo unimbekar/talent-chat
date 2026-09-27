@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+import logging
 import re
 import threading
 
@@ -17,6 +18,7 @@ from app.public.refusal import REFUSAL_TEXT, is_refusal
 from app.public.search import drop_unknown_codes, search_jobs
 
 router = APIRouter(prefix="/public", tags=["public"])
+logger = logging.getLogger("talent")
 
 _LOCK = threading.Lock()
 _HITS: dict[str, list[datetime]] = defaultdict(list)
@@ -99,9 +101,10 @@ def chat(body: ChatIn, request: Request):
             answer = _quote_only(result)
         else:
             try:
-                answer = _explain(request, result)
+                answer = _explain(request, result, body.message)
                 answer = drop_unknown_codes(answer, set(codes))
-            except LLMError:
+            except LLMError as exc:
+                logger.warning("public chat explanation failed: %s", exc)
                 notice = "Explanations are unavailable right now."
                 answer = ""
         return {
@@ -109,7 +112,7 @@ def chat(body: ChatIn, request: Request):
             "notice": notice,
             "answer": answer,
             "jobs": cards,
-            "prior_codes": codes[:8],
+            "prior_codes": codes[:24],
         }
     finally:
         db.close()
@@ -132,6 +135,8 @@ def _card(hit) -> dict:
         "description_note": None if on_file else "Full description not on file.",
         "quote": quote,
         "source_url": job.source_url,
+        "distance_miles": None if hit.distance_miles is None else round(hit.distance_miles, 1),
+        "near_place": hit.near_place,
     }
 
 
@@ -151,7 +156,7 @@ def _quote_only(result) -> str:
     return "That is not in the posting we have on file."
 
 
-def _explain(request, result) -> str:
+def _explain(request, result, message: str) -> str:
     payload = []
     for hit in result.hits:
         job = hit.job
@@ -160,17 +165,26 @@ def _explain(request, result) -> str:
                 "requisition_code": job.requisition_code,
                 "title": job.title,
                 "location": job.location,
+                "distance_miles": None if hit.distance_miles is None else round(hit.distance_miles, 1),
                 "skills": hit.matched_skills,
-                "quote": _public_quote(job.description_text or "", allow_clearance=bool(result.parsed and result.parsed.ask_clearance)),
+                "quote": _public_quote(
+                    job.description_text or "",
+                    allow_clearance=bool(result.parsed and result.parsed.ask_clearance),
+                    limit=2500,
+                ),
             }
         )
     system = (
-        "You explain open job postings a visitor already retrieved. "
+        "You answer a visitor's question about open job postings already retrieved. "
         "Write 2 to 4 sentences. Use only the requisition codes and quotes provided. "
+        "If the quotes do not state what was asked, say that it is not in these postings. "
+        "If the question excludes a city, name every city in the retrieved jobs and do not name the excluded city. "
+        "If distance_miles is present, use that number and do not invent a different distance. "
         "Do not invent job ids, skills, salary, sponsorship, or candidate information. "
         "Do not mention clearance unless the visitor asked about it."
     )
-    user = f"Visitor question context is the retrieved jobs:\n{payload}"
+    cities = sorted({hit.job.location for hit in result.hits if hit.job.location})
+    user = f"Question: {message}\nCities in these jobs: {cities}\nRetrieved jobs:\n{payload}"
     raw = request.app.state.llm.complete(system=system, user=user, temperature=0.2, json_mode=False)
     text = (raw or "").strip()
     if text.startswith("{"):
@@ -181,12 +195,12 @@ def _explain(request, result) -> str:
     return text
 
 
-def _public_quote(description: str, allow_clearance: bool) -> str:
+def _public_quote(description: str, allow_clearance: bool, limit: int = 1200) -> str:
     if allow_clearance:
-        return description[:1200]
+        return description[:limit]
     kept = []
     for line in description.splitlines():
         if re.search(r"(?i)clearance|polygraph|top secret|ts/sci", line):
             continue
         kept.append(line)
-    return "\n".join(kept)[:1200]
+    return "\n".join(kept)[:limit]
