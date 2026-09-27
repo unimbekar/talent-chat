@@ -1,0 +1,14 @@
+# Known work sites. The listing parser and the public query parser both read this file.
+locations:
+  - canonical: "Chantilly, VA"
+    aliases: ["chantilly", "chantilly va", "chantilly, va"]
+  - canonical: "Herndon, VA"
+    aliases: ["herndon", "herndon va", "herndon, va"]
+  - canonical: "Tysons, VA"
+    aliases: ["tysons", "tysons va", "tysons, va", "tysons corner"]
+  - canonical: "McLean, VA"
+    aliases: ["mclean", "mclean va", "mclean, va"]
+  - canonical: "Dulles, VA"
+    aliases: ["dulles", "dulles va", "dulles, va"]
+  - canonical: "Ashburn, VA"
+    aliases: ["ashburn", "ashburn va", "ashburn, va"]

@@ -1,0 +1,10 @@
+.env
+secrets/
+api/.venv
+api/.cache
+web/node_modules
+web/.next
+data
+__pycache__
+*.pyc
+.pytest_cache

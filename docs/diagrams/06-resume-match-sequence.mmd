@@ -1,0 +1,39 @@
+sequenceDiagram
+    autonumber
+    participant R as Recruiter
+    participant W as web /admin/match
+    participant A as api admin router
+    participant X as Ingest
+    participant L as LLM
+    participant E as FastEmbed
+    participant DB as Postgres
+    participant F as Files
+
+    R->>W: upload PDF, DOCX or TXT (max 10 MB)
+    W->>A: POST /admin/resumes (session cookie)
+    A->>A: SHA-256 of bytes
+    alt hash already stored
+        A-->>W: already ingested (link to profile)
+    else new file
+        A->>X: extract text
+        alt unsupported, .doc, no text layer, or password-protected
+            X-->>W: clear message, nothing stored
+        else text OK
+            Note over X: No clearance or classification check.<br/>"TOP SECRET" and "TS/SCI" are normal résumé text.
+            X->>X: redact SSNs
+            A->>F: store original privately
+            A->>L: redacted text, ask for a JSON profile
+            L-->>A: name, email, phone, city, skills, titles, clearance, polygraph, citizenship, summary
+            A->>A: validate JSON, map clearance and polygraph to levels
+            A->>DB: candidate status pending_review
+            A-->>W: review screen
+            R->>W: edit fields, then Confirm (or Delete)
+            W->>A: POST /admin/resumes/{id}/confirm
+            A->>E: candidate vector (1,024 cap) + 512-token chunks, 64 overlap
+            A->>DB: save vectors and confirmed profile
+            A->>A: rank_jobs - skill score, semantic, final, confidence, clearance flag
+            A->>DB: save matches
+            A->>L: optional 2-4 sentence explanation from quotes only
+            A-->>W: ranked jobs with score parts and quotes
+        end
+    end

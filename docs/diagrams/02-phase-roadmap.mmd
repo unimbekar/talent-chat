@@ -1,0 +1,15 @@
+flowchart LR
+    P1["<b>Phase 1</b><br/>Public job chat<br/>Admin résumé match<br/>Careers crawler<br/>Docker Compose on DGX Spark"]
+    P15["<b>Phase 1.5</b><br/>AWS deploy<br/>TLS, S3, nightly backup<br/>Bedrock backend<br/>public link goes live"]
+    P2["<b>Phase 2</b><br/>Google Drive ingest<br/>worker service<br/>Ingest + Candidates screens"]
+    P3["<b>Phase 3</b><br/>Outreach drafts<br/>admin approval<br/>SES + unsubscribe"]
+    P4["<b>Phase 4</b> (not in spec)<br/>Marketplace, multi-tenant,<br/>SSO, OpenSearch adapter"]
+
+    P1 --> P15 --> P2 --> P3 -.-> P4
+
+    classDef now fill:#1f4e3d,color:#fff,stroke:#1f4e3d
+    classDef next fill:#e8efe9,stroke:#1f4e3d,color:#1f2a24
+    classDef later fill:#f4f4f4,stroke:#999,color:#555,stroke-dasharray: 4 3
+    class P1 now
+    class P15,P2,P3 next
+    class P4 later

@@ -1,0 +1,67 @@
+flowchart LR
+    subgraph browser[Browser]
+        direction TB
+        pub["/chat<br/>(public)"]
+        adm["/admin<br/>(password)"]
+    end
+
+    subgraph web["web - Next.js"]
+        direction TB
+        mw["middleware<br/>CSP frame-ancestors<br/>admin cookie check"]
+        ui["Public chat UI<br/>Admin UI"]
+        proxy["rewrite /api/*<br/>to api:8000"]
+        mw --> ui --> proxy
+    end
+
+    subgraph api["api - FastAPI"]
+        direction TB
+        subgraph public_router["app/public (DB role app_public)"]
+            direction TB
+            ps["chat + job routes<br/>IP rate limit<br/>refusal check"]
+            qp["query parser<br/>synonyms + locations"]
+            js["job search<br/>jobs, job_chunks only"]
+            ps --> qp --> js
+        end
+        subgraph admin_router["app/admin (session, DB role app_admin)"]
+            direction TB
+            auth["login, per-IP lockout"]
+            jobsA["jobs: recrawl,<br/>override, edit"]
+            resume["résumés: upload,<br/>review, confirm, delete"]
+            rank["rank_jobs"]
+        end
+        subgraph core["app/core (shared)"]
+            direction TB
+            crawler["crawler<br/>listing + detail parsers<br/>sanity guard, 6h timer"]
+            ingest["extract + SSN redact<br/>clearance/polygraph mapping<br/>(never rejects on clearance)"]
+            embed["FastEmbed<br/>nomic-embed-text-v1.5<br/>768d, chunks 512/64"]
+            scorer["score math"]
+            llmc["LLMClient<br/>openai_compat now<br/>bedrock in 1.5"]
+        end
+    end
+
+    subgraph pg["postgres - pgvector pg16"]
+        direction TB
+        jobsT[("jobs, job_chunks,<br/>skill_synonyms, settings")]
+        candT[("candidates, chunks,<br/>matches, sessions, audit_log")]
+    end
+
+    fs[("uploads volume<br/>originals, private")]
+    site["janus-soft.com<br/>/career + /jobs/NNNN"]
+    llm["DGX model server"]
+
+    pub --> mw
+    adm --> mw
+    proxy --> public_router
+    proxy --> admin_router
+    js --> jobsT
+    public_router --> llmc
+    admin_router --> core
+    admin_router --> candT
+    admin_router --> jobsT
+    resume --> fs
+    crawler --> site
+    llmc --> llm
+    js -.-x|"permission denied"| candT
+
+    style public_router fill:#e8efe9,stroke:#1f4e3d
+    style admin_router fill:#fdf1e6,stroke:#a8621c

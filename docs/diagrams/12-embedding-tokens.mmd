@@ -1,0 +1,15 @@
+flowchart LR
+    subgraph jobs["Job (214-585 tokens today)"]
+        jt["title + city + summary<br/>+ full description"] -->|"search_document:<br/>cap 2,048"| jv["jobs.embedding<br/>1 vector"]
+        jd["description sections"] -->|"512 tokens<br/>64 overlap"| jc["job_chunks<br/>quotes"]
+    end
+    subgraph cands["Résumé (1,000-3,000 tokens typical)"]
+        ct["confirmed summary<br/>+ titles + skills"] -->|"search_document:<br/>cap 1,024"| cv["candidates.embedding<br/>1 vector"]
+        cr["redacted résumé text"] -->|"512 tokens<br/>64 overlap"| cc["candidate_chunks<br/>quotes"]
+    end
+    q["visitor query"] -->|"search_query:<br/>cap 256"| qv["query vector<br/>(not stored)"]
+
+    model(["nomic-ai/nomic-embed-text-v1.5<br/>FastEmbed, CPU, 768d, 8,192 context"])
+    jv -.- model
+    cv -.- model
+    qv -.- model

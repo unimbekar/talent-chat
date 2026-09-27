@@ -1,0 +1,29 @@
+flowchart LR
+    visitor([Visitor<br/>phone or desktop])
+    admin([Recruiter / Admin])
+    candidate([Candidate<br/>Phase 3 email only])
+
+    subgraph ext[External systems]
+        site["janus-soft.com/career<br/>+ /jobs/NNNN detail pages<br/>(new jobs posted regularly)"]
+        drive[("Google Drive folders<br/>Phase 2")]
+        ses["Amazon SES<br/>Phase 3"]
+        llm["LLM endpoint<br/>DGX: Ollama / vLLM / NIM<br/>Prod: Amazon Bedrock us-east-1"]
+    end
+
+    subgraph tc[Talent Chat]
+        web["web<br/>Next.js"]
+        api["api<br/>FastAPI + FastEmbed"]
+        db[("Postgres 16<br/>pgvector + full-text")]
+        files[("Files<br/>local disk / S3")]
+    end
+
+    visitor -->|"/chat (linked or iframed)"| web
+    admin -->|"/admin (password)"| web
+    web --> api
+    api --> db
+    api --> files
+    api -->|"crawl every 6h + on demand"| site
+    api -->|"poll every 10m"| drive
+    api -->|"approved sends only"| ses
+    api -->|"structure + explain only"| llm
+    ses --> candidate

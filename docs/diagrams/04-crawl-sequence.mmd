@@ -1,0 +1,34 @@
+sequenceDiagram
+    autonumber
+    participant T as Timer (6h) or Admin "Recrawl now"
+    participant C as Crawler
+    participant S as janus-soft.com
+    participant P as Parsers
+    participant DB as Postgres
+    participant E as FastEmbed
+
+    T->>C: run_crawl()
+    C->>S: GET /career
+    S-->>C: listing HTML (about 19 lines today)
+    C->>P: listing parser
+    P-->>C: code, title, city, program_tag, external_req, status, site_job_id, source_line
+    alt fetch failed, 0 rows, or under 50% of open rows
+        C->>DB: record crawl error (shown on admin Jobs screen)
+        Note over C,DB: sanity guard - nothing is closed or changed
+    else listing OK
+        loop each listing line (1 s apart, 20 s timeout)
+            C->>S: GET /jobs/NNNN
+            S-->>C: detail HTML
+            C->>P: detail parser
+            P-->>C: description, Mandatory items, Desired items, Clearance item
+            Note over P: title and city come from the listing line.<br/>Clearance goes to clearance_required and polygraph_required,<br/>never to skills. No headings: keep whole text and flag needs_review.
+        end
+        C->>DB: UPSERT by requisition code, set last_seen_at
+        C->>DB: codes not seen become closed (never deleted), reappearing codes reopen
+        opt description_hash changed and no admin override
+            Note over C: redact SSN, then LLM structuring<br/>with the parser's split passed in
+            C->>E: embed job vector (2,048 cap) and 512-token chunks
+            C->>DB: save skills, summary, vectors
+        end
+    end
+    C->>DB: audit_log(crawl, counts)

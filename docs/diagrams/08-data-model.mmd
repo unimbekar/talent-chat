@@ -1,0 +1,103 @@
+erDiagram
+    jobs ||--o{ job_chunks : has
+    jobs ||--o{ matches : ranked_in
+    candidates ||--o{ candidate_chunks : has
+    candidates ||--o{ matches : ranked_in
+    candidates ||--o{ outreach : "Phase 3"
+    jobs ||--o{ outreach : "Phase 3"
+    candidates ||--o{ ingest_events : "Phase 2"
+
+    jobs {
+        uuid id PK
+        text requisition_code UK "A1007"
+        text site_job_id "1007"
+        text title
+        text location "McLean, VA"
+        text program_tag "admin-only"
+        text external_req "admin-only"
+        text status "open upcoming proposal closed"
+        text source_line
+        bool needs_review
+        text description_text
+        text description_source "careers_page admin none"
+        text description_hash
+        text_array must_have_skills
+        text_array nice_to_have_skills
+        text clearance_required "admin-only"
+        text polygraph_required "admin-only"
+        text summary
+        vector embedding "768"
+        tsvector tsv
+        timestamptz last_seen_at
+    }
+    job_chunks {
+        uuid id PK
+        uuid job_id FK
+        int ord
+        text text "512 tokens"
+        vector embedding "768"
+    }
+    candidates {
+        uuid id PK
+        text file_sha256 UK
+        text original_path
+        text status "pending_review confirmed"
+        text full_name
+        text email
+        text phone
+        text location
+        jsonb skills "name and years"
+        text_array titles
+        text clearance "admin-only level"
+        text polygraph "admin-only level"
+        text citizenship "admin-only"
+        text summary
+        text redacted_text
+        vector embedding "768"
+        tsvector tsv
+        bool outreach_opt_in "default false"
+        text google_file_id "Phase 2"
+    }
+    candidate_chunks {
+        uuid id PK
+        uuid candidate_id FK
+        int ord
+        text text "512 tokens"
+        vector embedding "768"
+    }
+    matches {
+        uuid id PK
+        uuid candidate_id FK
+        uuid job_id FK
+        float skill_score "nullable"
+        float raw_cosine
+        float semantic
+        float final
+        text confidence
+        text_array overlap_skills
+        text clearance_flag
+    }
+    skill_synonyms {
+        text alias PK
+        text canonical PK
+    }
+    outreach {
+        uuid id PK
+        uuid candidate_id FK
+        uuid job_id FK
+        text status "draft approved sent skipped failed"
+        timestamptz sent_at
+    }
+    ingest_events {
+        uuid id PK
+        text source "upload drive"
+        text outcome
+        text reason
+    }
+    audit_log {
+        uuid id PK
+        text actor
+        text action
+        uuid subject_id
+        timestamptz at
+    }

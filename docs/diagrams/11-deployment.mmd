@@ -1,0 +1,23 @@
+flowchart LR
+    subgraph dev["Development and Phase 1 - NVIDIA DGX Spark (arm64)"]
+        cur["Cursor IDE"]
+        dc["docker compose<br/>web :3000, api, postgres"]
+        oll["Ollama / vLLM / NIM<br/>OpenAI-compatible<br/>e.g. qwen3.6:latest"]
+        cur --> dc
+        dc -->|"LLM_BACKEND=openai_compat"| oll
+    end
+
+    subgraph prod["Production, Phase 1.5 on - AWS us-east-1"]
+        cf["Cloudflare proxy<br/>or Caddy TLS"]
+        ec2["t4g.medium (Graviton arm64)<br/>web, api, worker, postgres"]
+        s3[("S3 private, SSE-S3<br/>originals + nightly pg_dump")]
+        br["Amazon Bedrock<br/>Nova Micro / Lite<br/>LLM_BACKEND=bedrock"]
+        sesP["Amazon SES<br/>(Phase 3)"]
+        cf --> ec2
+        ec2 --> s3
+        ec2 --> br
+        ec2 --> sesP
+    end
+
+    site["www.janus-soft.com"] -->|"link or iframe /chat"| cf
+    dc -.->|"same linux/arm64 images"| ec2

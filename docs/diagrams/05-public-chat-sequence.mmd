@@ -1,0 +1,33 @@
+sequenceDiagram
+    autonumber
+    participant V as Visitor
+    participant W as web /chat
+    participant A as api public router
+    participant DB as Postgres (app_public role)
+    participant E as FastEmbed
+    participant L as LLM
+
+    V->>W: "Java, Python and AWS in Chantilly"
+    W->>A: POST /public/chat {message, prior_codes[]}
+    A->>A: rate limit by client IP (trusted proxy header)
+    A->>A: refusal check (candidates, résumés, who applied, phones)
+    alt asks about people
+        A-->>W: fixed refusal - published jobs only (no DB call)
+    else job question
+        A->>A: deterministic parse - skills via synonyms, city via location list, rest is full-text
+        A->>DB: SELECT open jobs WHERE skills overlap AND location = city AND tsv matches
+        DB-->>A: job set (SQL decides membership)
+        opt job vectors exist
+            A->>E: embed "search_query: ..."
+            A->>A: rerank the same set by cosine
+        end
+        A->>L: top 8 job fields + description quotes (temperature 0.2, 30 s timeout)
+        alt LLM answers
+            L-->>A: short answer
+            A->>A: drop any requisition code not in the retrieved set
+        else LLM down or timeout
+            A->>A: "Explanations are unavailable right now"
+        end
+        A-->>W: answer + cards (code, title, city, matched skills, confidence)
+    end
+    W-->>V: cards with expandable description quote

@@ -1,0 +1,17 @@
+flowchart LR
+    cs["candidate skills<br/>(synonym-normalized)"] --> ov{"overlap with<br/>must_have and nice_to_have"}
+    js["job skills<br/>(synonym-normalized)"] --> ov
+    ov -->|"job has no skills"| nulls["skill_score = null<br/>confidence = low"]
+    ov -->|"otherwise"| ss["skill_score =<br/>0.7 x must_hit<br/>+ 0.3 x overlap ratio"]
+    ce["candidate vector"] --> cos["cosine<br/>(raw value stored)"]
+    je["job vector"] --> cos
+    cos --> sem["semantic = (cosine + 1) / 2"]
+    ss --> fin["final =<br/>0.55 x skill_score<br/>+ 0.45 x semantic"]
+    sem --> fin
+    nulls --> fin2["final = semantic"]
+    sem --> fin2
+    fin --> clr{"clearance and polygraph<br/>none - public_trust - secret - ts - ts_sci<br/>none - ci - full_scope"}
+    fin2 --> clr
+    clr -->|"candidate below job"| short["flag clearance_short<br/>(visible, no Phase 3 draft)"]
+    clr -->|"candidate unknown"| unk["flag clearance_unknown<br/>(visible, no Phase 3 draft)"]
+    clr -->|"meets requirement"| okc["no flag"]

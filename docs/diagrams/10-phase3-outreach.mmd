@@ -1,0 +1,15 @@
+flowchart TB
+    tick["scheduler tick<br/>every OUTREACH_INTERVAL_DAYS, or Run now"] --> guard{"last_run_at<br/>inside interval?"}
+    guard -->|"yes"| stop["skip - no double run"]
+    guard -->|"no"| jobsel["open jobs with a real description<br/>(not title-only)"]
+    jobsel --> candsel["candidates: opt-in, email present,<br/>clearance + polygraph known and sufficient,<br/>city compatible or admin override,<br/>final at or above OUTREACH_MIN_SCORE,<br/>no outreach for the pair in 90 days"]
+    candsel --> cap["cap 25 drafts per run"]
+    cap --> tmpl["template body: title, city, up to 5 skills,<br/>careers URL, reply-to, postal address<br/>NO external_req, program_tag, customer, clearance"]
+    tmpl --> draft[("outreach: draft")]
+    draft --> review{"admin review"}
+    review -->|"skip"| skipped[("skipped")]
+    review -->|"approve"| send["SES send with List-Unsubscribe<br/>(local outbox if SES not set)"]
+    send --> sent[("sent")]
+    sent --> unsub["public signed unsubscribe link"]
+    unsub --> optout[("outreach_opt_in = false")]
+    bounce["SES bounce / complaint"] --> optout

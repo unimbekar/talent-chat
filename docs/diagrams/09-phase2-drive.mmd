@@ -1,0 +1,29 @@
+flowchart TB
+    subgraph gd[Google Drive]
+        rf[("Résumé folder<br/>DRIVE_FOLDER_ID")]
+        jf[("Job description folder<br/>JOB_DESCRIPTION_FOLDER_ID<br/>A1001.pdf, N3011.docx ...")]
+    end
+
+    subgraph worker["worker container - python -m app.worker"]
+        poll["changes.list every 10 min<br/>stored page token"]
+        bf["backfill command<br/>safe to re-run"]
+        route{"which folder?"}
+        exp["export Google Docs to DOCX or text<br/>skip other types"]
+    end
+
+    pipe["same ingest pipeline as Phase 1<br/>hash, extract, SSN redact,<br/>structure, map clearance"]
+    jpipe["job description pipeline<br/>filename = requisition code<br/>counts as admin override"]
+    db[("Postgres")]
+    ui["/admin Ingest + Candidates screens"]
+
+    rf --> poll
+    jf --> poll
+    bf --> route
+    poll --> route
+    route -->|"résumé"| exp --> pipe
+    route -->|"job description"| jpipe
+    pipe -->|"key: google_file_id + sha256<br/>new revision updates same row<br/>status pending_review<br/>outreach_opt_in = false"| db
+    jpipe --> db
+    pipe -->|"rejects: type, no text, password"| db
+    db --> ui
+    ui -->|"admin confirms"| db

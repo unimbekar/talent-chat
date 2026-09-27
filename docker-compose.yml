@@ -1,0 +1,75 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    platform: linux/arm64
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: talent
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d talent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    platform: linux/arm64
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://app_admin:${APP_ADMIN_DB_PASSWORD:-admin}@postgres:5432/talent
+      DATABASE_PUBLIC_URL: postgresql+psycopg://app_public:${APP_PUBLIC_DB_PASSWORD:-public}@postgres:5432/talent
+      DATABASE_MIGRATE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/talent
+      APP_ADMIN_DB_PASSWORD: ${APP_ADMIN_DB_PASSWORD:-admin}
+      APP_PUBLIC_DB_PASSWORD: ${APP_PUBLIC_DB_PASSWORD:-public}
+      FILE_DIR: /app/data/uploads
+      ADMIN_PASSWORD_HASH_FILE: /run/secrets/admin_password_hash
+      CRAWL_ON_START: ${CRAWL_ON_START:-true}
+      LOCATIONS_FILE: /app/configs/locations.yaml
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - uploads:/app/data/uploads
+      - ./secrets/admin_password_hash:/run/secrets/admin_password_hash:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "/app/.venv/bin/python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      args:
+        API_INTERNAL_URL: http://api:8000
+        PUBLIC_FRAME_ANCESTOR: ${PUBLIC_FRAME_ANCESTOR:-}
+    platform: linux/arm64
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    environment:
+      PUBLIC_FRAME_ANCESTOR: ${PUBLIC_FRAME_ANCESTOR:-}
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  uploads:
