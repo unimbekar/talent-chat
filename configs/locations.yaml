@@ -1,14 +1,34 @@
 # Known work sites. The listing parser and the public query parser both read this file.
+# Coordinates are city centers, used to answer "within N miles" questions.
 locations:
   - canonical: "Chantilly, VA"
     aliases: ["chantilly", "chantilly va", "chantilly, va"]
+    latitude: 38.894279
+    longitude: -77.431099
   - canonical: "Herndon, VA"
     aliases: ["herndon", "herndon va", "herndon, va"]
+    latitude: 38.969554
+    longitude: -77.386098
   - canonical: "Tysons, VA"
     aliases: ["tysons", "tysons va", "tysons, va", "tysons corner"]
+    latitude: 38.918722
+    longitude: -77.231095
   - canonical: "McLean, VA"
     aliases: ["mclean", "mclean va", "mclean, va"]
+    latitude: 38.934280
+    longitude: -77.177536
   - canonical: "Dulles, VA"
     aliases: ["dulles", "dulles va", "dulles, va"]
+    latitude: 38.944533
+    longitude: -77.455811
   - canonical: "Ashburn, VA"
     aliases: ["ashburn", "ashburn va", "ashburn, va"]
+    latitude: 39.043756
+    longitude: -77.487442
+
+# Places a visitor can measure from. These are not job cities.
+places:
+  - name: "Bethesda, MD"
+    aliases: ["bethesda", "bethesda md", "bethesda, md", "bethesda maryland"]
+    latitude: 38.984652
+    longitude: -77.094709

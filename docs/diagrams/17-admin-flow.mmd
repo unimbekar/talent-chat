@@ -1,0 +1,36 @@
+sequenceDiagram
+    autonumber
+    actor R as Recruiter
+    participant W as web container
+    participant A as api container
+    participant DB as postgres as app_admin
+    participant F as uploads volume
+    participant O as Ollama via the bridge
+
+    R->>W: GET /admin/login
+    R->>W: POST /api/admin/login
+    W->>A: POST /admin/login
+    A->>DB: lockout check, then a row in admin_sessions
+    A-->>R: Set-Cookie admin_session for 12 hours
+    R->>W: GET /admin
+    Note over W: page redirects to /admin/jobs
+    R->>W: GET /api/admin/jobs
+    Note over W,A: Cookie is forwarded. No cookie is HTTP 401.
+    W->>A: GET /admin/jobs
+    A->>DB: jobs and crawl_state
+    A-->>R: open and closed postings
+    R->>W: POST /api/admin/jobs/recrawl
+    A->>A: fetch janus-soft.com from this container
+    A->>O: structure each new description
+    A->>DB: upsert jobs and job_chunks
+    R->>W: POST /api/admin/resumes with the file
+    A->>F: store the original by SHA-256
+    A->>O: JSON profile from redacted text
+    A->>DB: candidate, status pending_review
+    R->>W: POST /api/admin/resumes/{id}/confirm
+    A->>DB: embeddings, then match rows
+    A->>O: short explanation stored on the match
+    R->>W: GET /api/admin/review?code and candidate
+    Note over A,DB: Line coverage is Python. This call does not use the model.
+    A->>DB: job text and résumé text
+    A-->>R: matched lines and missing lines

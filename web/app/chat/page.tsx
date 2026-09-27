@@ -18,6 +18,8 @@ type JobCard = {
   description_note: string | null;
   quote: string;
   source_url: string | null;
+  distance_miles?: number | null;
+  near_place?: string | null;
 };
 
 type ChatResponse = {
@@ -149,6 +151,11 @@ function Answer({ response }: { response: ChatResponse }) {
             <p className="font-mono text-sm text-pine">{job.requisition_code}</p>
             <CardTitle>{job.title}</CardTitle>
             <p className="text-sm text-ink/70">{job.location}</p>
+            {job.distance_miles != null && job.near_place && (
+              <p className="text-sm text-ink/70">
+                {job.distance_miles} miles from {job.near_place}
+              </p>
+            )}
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <div className="flex flex-wrap gap-2">

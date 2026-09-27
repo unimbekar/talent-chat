@@ -1,0 +1,17 @@
+flowchart LR
+    browser["Browser"]
+    web["web<br/>talent-chat-web-1<br/>Next.js on port 3000<br/>published as localhost:3010"]
+    api["api<br/>talent-chat-api-1<br/>FastAPI on port 8000<br/>port not published<br/>FastEmbed runs here"]
+    pg["postgres<br/>talent-chat-postgres-1<br/>127.0.0.1:5432"]
+    bridge["ollama-bridge<br/>talent-chat-ollama-bridge-1<br/>host network<br/>172.17.0.1:11434"]
+    ollama["Ollama on the Spark<br/>127.0.0.1:11434<br/>qwen3.6"]
+    site["janus-soft.com<br/>/career and /jobs/NNNN"]
+    files[("uploads volume<br/>résumé files")]
+
+    browser -->|"pages and /api/*"| web
+    web -->|"http://api:8000<br/>/api prefix removed"| api
+    api -->|"app_public or app_admin"| pg
+    api -->|"host.docker.internal:11434"| bridge
+    bridge -->|"forward"| ollama
+    api -->|"crawl every 6 h<br/>and Recrawl now"| site
+    api --> files

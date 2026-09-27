@@ -46,7 +46,7 @@ def parse_json_content(text: str) -> dict:
 class OpenAICompatClient:
     """OpenAI-compatible chat completions, aimed at the DGX (Ollama, vLLM, or NIM)."""
 
-    def __init__(self, base_url: str, model: str, api_key: str = "", timeout: float = 30.0) -> None:
+    def __init__(self, base_url: str, model: str, api_key: str = "", timeout: float = 90.0) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.api_key = api_key
@@ -56,6 +56,7 @@ class OpenAICompatClient:
         payload: dict = {
             "model": self.model,
             "temperature": temperature,
+            "think": False,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
