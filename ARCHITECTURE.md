@@ -188,5 +188,5 @@ talent-chat/
 ├── tests/fixtures/careers/       # live snapshot, 2026-09-27
 ├── docs/diagrams/                # diagram sources + PNGs
 ├── scripts/render-diagrams.sh
-└── ARCHITECTURE.md  PROMPT.md  README.md  SPEC.md
+└── ARCHITECTURE.md  PROMPT.md  README.md  SPEC.md  postgres.md
 ```

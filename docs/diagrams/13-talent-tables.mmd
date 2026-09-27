@@ -1,0 +1,49 @@
+erDiagram
+    jobs ||--o{ job_chunks : job_id
+    jobs ||--o{ matches : job_id
+    candidates ||--o{ matches : candidate_id
+    candidates ||--o{ candidate_chunks : candidate_id
+
+    jobs {
+        uuid id PK
+        text requisition_code UK
+        text title
+        text location
+        text status
+        text_array must_have_skills
+        text_array nice_to_have_skills
+        vector embedding "768"
+        tsvector tsv
+    }
+    job_chunks {
+        uuid id PK
+        uuid job_id FK
+        int ord
+        text text
+        vector embedding "768"
+    }
+    candidates {
+        uuid id PK
+        text file_sha256 UK
+        text full_name
+        text original_filename
+        text status
+        jsonb skills
+        vector embedding "768"
+        tsvector tsv
+    }
+    candidate_chunks {
+        uuid id PK
+        uuid candidate_id FK
+        int ord
+        text text
+        vector embedding "768"
+    }
+    matches {
+        uuid id PK
+        uuid candidate_id FK
+        uuid job_id FK
+        float skill_score
+        float semantic
+        float final
+    }

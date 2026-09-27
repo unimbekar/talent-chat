@@ -1,0 +1,40 @@
+erDiagram
+    skill_synonyms {
+        text alias PK
+        text canonical PK
+    }
+    settings {
+        text key PK
+        text value
+        bool is_public
+    }
+    crawl_state {
+        int id PK
+        timestamptz last_started_at
+        timestamptz last_finished_at
+        bool last_ok
+        text last_error
+        int last_rows
+    }
+    audit_log {
+        uuid id PK
+        text actor
+        text action
+        uuid subject_id
+        text outcome
+        timestamptz at
+    }
+    admin_sessions {
+        uuid id PK
+        timestamptz created_at
+        timestamptz expires_at
+    }
+    login_attempts {
+        uuid id PK
+        text ip
+        int failed_count
+        timestamptz locked_until
+    }
+    alembic_version {
+        varchar version_num PK
+    }
