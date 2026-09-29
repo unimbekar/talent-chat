@@ -6,7 +6,9 @@ import uuid
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import Boolean, Computed, DateTime, Float, ForeignKey, Integer, Text, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR, UUID
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, validates
+
+from app.core.us_states import state_from_location
 
 
 class Base(DeclarativeBase):
@@ -82,6 +84,8 @@ class Candidate(Base):
     email: Mapped[str | None] = mapped_column(Text)
     phone: Mapped[str | None] = mapped_column(Text)
     location: Mapped[str | None] = mapped_column(Text)
+    # Two-letter home state derived from location. Set by _derive_state; do not assign directly.
+    state: Mapped[str | None] = mapped_column(Text, index=True)
     skills: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
     titles: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list, server_default="{}")
     clearance: Mapped[str | None] = mapped_column(Text)
@@ -100,6 +104,11 @@ class Candidate(Base):
     chunks: Mapped[list["CandidateChunk"]] = relationship(
         back_populates="candidate", cascade="all, delete-orphan"
     )
+
+    @validates("location")
+    def _derive_state(self, _key: str, value: str | None) -> str | None:
+        self.state = state_from_location(value)
+        return value
 
 
 class CandidateChunk(Base):

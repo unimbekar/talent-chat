@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,17 +18,40 @@ type Person = {
   skills: string[];
 };
 
+type StateRef = { code: string; name: string };
+
+type Filters = {
+  skills: string[];
+  states: StateRef[];
+  exclude_states: StateRef[];
+  categories: string[];
+  keywords: string[];
+  parser: "llm" | "rules";
+};
+
 type Answer = {
   answer: string;
   categories: string[];
+  filters?: Filters | null;
+  unknown_location?: number;
   candidates: Person[];
 };
+
+function filterChips(filters: Filters): string[] {
+  return [
+    ...filters.categories.map((label) => `Role: ${label}`),
+    ...filters.skills.map((skill) => `Skill: ${skill}`),
+    ...filters.keywords.map((word) => `Mentions: ${word}`),
+    ...filters.states.map((state) => `Lives in: ${state.name}`),
+    ...(filters.exclude_states || []).map((state) => `Not in: ${state.name}`),
+  ];
+}
 
 const STORAGE_KEY = "talent-find-results";
 
 export default function FindPage() {
   const router = useRouter();
-  const [draft, setDraft] = useState("Show me all Software Testers.");
+  const [draft, setDraft] = useState("Find me all candidates with ServiceNow experience who live in Maryland.");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<Answer | null>(null);
@@ -102,8 +126,9 @@ export default function FindPage() {
       <div>
         <h1 className="font-serif text-3xl">Find candidates</h1>
         <p className="mt-1 max-w-2xl text-sm text-ink/70">
-          Ask for a profession, such as Software Testers, Cybersecurity Engineers, or people with machine learning experience.
-          Emails stay on this desk so you can copy them. Nothing is sent.
+          Ask in plain words for a role, a skill, and where people live, such as ServiceNow people in Maryland, Software
+          Testers, or Java developers outside Virginia. The filters used are shown above the list. Emails stay on this
+          desk so you can copy them. Nothing is sent.
         </p>
       </div>
       <form onSubmit={onSubmit} className="flex flex-col gap-2">
@@ -126,8 +151,32 @@ export default function FindPage() {
               </Button>
             )}
           </div>
+          {result.filters && (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs text-ink/60">Filters used:</span>
+                {filterChips(result.filters).map((chip) => (
+                  <Badge key={chip}>{chip}</Badge>
+                ))}
+              </div>
+              {result.filters.parser === "rules" && (
+                <p className="text-xs text-ink/60">
+                  The language model did not answer, so these filters were read by keyword. Negation such as “outside
+                  Virginia” is not understood in this mode.
+                </p>
+              )}
+            </div>
+          )}
+          {(result.unknown_location || 0) > 0 && (
+            <p className="text-xs text-ink/60">
+              {result.unknown_location} more {result.unknown_location === 1 ? "résumé matches" : "résumés match"} the
+              other filters but {result.unknown_location === 1 ? "has" : "have"} no known home state, so{" "}
+              {result.unknown_location === 1 ? "it is" : "they are"} not listed. Add a location on the résumé’s profile
+              to include {result.unknown_location === 1 ? "it" : "them"}.
+            </p>
+          )}
           <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-card">
-            {result.candidates.length === 0 && <li className="px-4 py-8 text-sm text-ink/70">No one is filed in that category yet.</li>}
+            {result.candidates.length === 0 && <li className="px-4 py-8 text-sm text-ink/70">No one on file matches all of those filters.</li>}
             {result.candidates.map((person) => (
               <li key={person.id} className="flex flex-col gap-2 px-4 py-3">
                 <div>

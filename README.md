@@ -18,13 +18,47 @@ This repository is the recruiting assistant for [Janus Soft Inc.](https://www.ja
 
 ## Recruiter desk
 
-Sign in at `/admin`. The header links are Jobs, Match, and Review.
+Sign in at `/admin`. The header links are Jobs, Candidates, Find, Match, and Review. Find is described in [Find candidates](#find-candidates).
 
 - **Jobs.** Open postings from the careers crawl. A row that leaves the careers page is closed, not deleted, and listed under “No longer on the careers page.” Each job page shows the full description, the mandatory and desired lines from the posting, and résumés that cover at least 50% of the mandatory lines.
 - **Match.** Upload a PDF, DOCX, or TXT, or open a résumé already on file. Skills on the profile are tools and languages. Confirming ranks the résumé against open jobs. A card appears only when mandatory coverage is at least 50%. A strong match is at least 90%. Desired coverage is a separate percent and does not lower the mandatory score.
 - **Review.** Pick one job and one résumé. The screen shows the mandatory and desired percents, the posting lines the résumé covers, and the lines it is still missing.
 
 A tool named in the job title has to be on the résumé. A Salesforce Developer posting does not list a résumé that never names Salesforce.
+
+## Find candidates
+
+`/admin/find` answers plain questions such as “Find me all candidates with ServiceNow experience who live in Maryland.”
+
+The language model only reads the question. It turns the sentence into filters: skills, home states to include or exclude, cities, roles, and keywords. It never sees a résumé and never chooses who is listed. PostgreSQL applies the filters, so a Maryland search cannot return a Virginia résumé. The filters used are shown above the list.
+
+Each filter the model returns is checked against the question before it is used:
+
+- A state counts only when the question names it (“Maryland”, “MD”) or names a city in it (“near Baltimore”). A named state the model leaves out is still applied.
+- A skill counts only when it is a known skill named in the question. Other phrases the question uses become keywords the résumé must contain.
+- A role counts only when the question uses a role word such as “engineers” or “testers”. “ServiceNow experience” is the skill ServiceNow, not the Service Now Engineer category.
+- “Outside Virginia” excludes Virginia and also leaves out résumés with no known home state.
+
+When the model is down, a keyword parser reads the same skills, states, and roles. It does not understand negation, and the page says when it was used.
+
+A skill matches when it is on the parsed skill list or the résumé text names it. Aliases shorter than three letters, such as Go or R, match only the skill list.
+
+### Home state
+
+Each candidate has a `state` column, the two-letter home state derived from `location`. It is recalculated whenever the location changes, including recruiter edits on the Match screen.
+
+The location comes from the résumé header, the name and contact lines. The body is not read. A city there is usually an employer, school, or client site, and filing it as home puts people in the wrong state. `PAT, IP`, `CACI, VA`, and `Lotus Notes, MS` are not places. `, MS` counts as Mississippi only with a ZIP code.
+
+Many résumés list no home address. Those candidates have no state and do not appear in a state search. The page reports how many résumés matched the other filters but have no known state. Add a location on the Match screen to include one.
+
+After upgrading, or after a large import, re-file every unconfirmed candidate's location:
+
+```bash
+docker compose exec api /app/.venv/bin/python -m app.relocate --dry-run   # print changes, save nothing
+docker compose exec api /app/.venv/bin/python -m app.relocate             # save
+```
+
+The command re-reads each header with the parser, then asks the model about rows that still have no state. It keeps the model's answer only when the city it gives appears in the lines it was shown. Confirmed profiles keep the recruiter's location. `--no-llm` skips the model pass. With `qwen3.6` on the Spark, the model pass takes about 15 seconds per candidate.
 
 ## How a posting line is scored
 

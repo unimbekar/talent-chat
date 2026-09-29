@@ -15,10 +15,13 @@ from app.core.llm import LLMClient, LLMError, parse_json_content
 from app.core.redact import redact_ssn
 from app.core.locations import find_location_in_text
 from app.core.skills import find_canonicals, normalize_skill_list, tools_and_languages
+from app.core.us_states import looks_like_city, state_from_location
 
 _EMAIL = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 _PHONE = re.compile(r"(?<!\d)(?:\+?1[\s.\-]?)?(?:\(\d{3}\)|\d{3})[\s.\-]?\d{3}[\s.\-]?\d{4}(?!\d)")
 _CITY_STATE = re.compile(r"\b([A-Z][A-Za-z]+(?:[ \-][A-Z][A-Za-z]+)*),\s*([A-Z]{2})\b")
+_ZIP_AFTER = re.compile(r"\s*(\d{5})(?:-\d{4})?\b")
+HEADER_LINES = 15
 _NAME_LINE = re.compile(r"^[A-Z][a-z]+(?:[ \-][A-Z][a-z]+){1,3}$")
 _NAME_LEAD = re.compile(r"^([A-Z][a-z]+(?:[ \-][A-Z][a-z]+){1,3})\b")
 _ROLE = re.compile(
@@ -47,7 +50,7 @@ def resume_facts(text: str) -> dict:
         "full_name": _resume_name(lines, raw),
         "email": email_match.group(0) if email_match else None,
         "phone": phone_match.group(0) if phone_match else None,
-        "location": _resume_location(raw),
+        "location": resume_location(raw),
         "skills": _resume_skills(raw, lines),
         "titles": _resume_titles(raw, lines),
         "citizenship": _resume_citizenship(raw),
@@ -78,14 +81,40 @@ def _resume_name(lines: list[str], text: str) -> str | None:
     return None
 
 
-def _resume_location(text: str) -> str | None:
-    known = find_location_in_text(text)
-    if known:
-        return known
-    match = _CITY_STATE.search(text)
-    if match:
-        return f"{match.group(1)}, {match.group(2)}"
-    return None
+def resume_location(text: str) -> str | None:
+    """Home city from the résumé header: the name and contact lines.
+
+    The body is not read. A city there is usually an employer, client, or program site,
+    and filing that as home puts people in the wrong state. A 'City, ST' match counts only
+    when ST is a real state and the city looks like a place.
+    """
+    raw = text or ""
+    lines = [line.strip() for line in raw.splitlines() if line.strip()]
+    header = "\n".join(lines[:HEADER_LINES])
+    for match in _CITY_STATE.finditer(header):
+        city = _trailing_city(match.group(1))
+        if city is None:
+            continue
+        zip_code = _ZIP_AFTER.match(header, match.end())
+        checked = f"{city}, {match.group(2)}" + (f" {zip_code.group(1)}" if zip_code else "")
+        if state_from_location(checked):
+            return f"{city}, {match.group(2)}"
+    return find_location_in_text(header)
+
+
+def _trailing_city(text: str) -> str | None:
+    """Longest run of up to three final words that reads as a city.
+
+    'Service System Administrator Oracle Reston' → 'Reston'. 'Fort Washington' stays whole.
+    """
+    words = text.split()
+    best: str | None = None
+    for size in range(1, min(3, len(words)) + 1):
+        tail = " ".join(words[-size:])
+        if not looks_like_city(tail):
+            break
+        best = tail
+    return best
 
 
 def _resume_skills(text: str, lines: list[str]) -> list[dict]:

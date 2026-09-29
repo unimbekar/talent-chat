@@ -3,9 +3,10 @@
 from datetime import datetime, timezone
 from pathlib import Path
 import hashlib
+import logging
 import uuid
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.sql.expression import nullslast
@@ -21,6 +22,7 @@ from app.admin.auth import (
     verify_password,
 )
 from app.admin.candidate_repository import by_hash, delete_candidate, get_candidate
+from app.admin.find import describe, find_candidates
 from app.admin.folder_ingest import ingest_status, preferred_name, scan_resumes, start_ingest
 from app.admin.rank import _posting_lines, embed_candidate, rank_jobs
 from app.core.score import MANDATORY_BAR, covers_title, section_coverage
@@ -37,10 +39,11 @@ from app.core.skills import normalize_skill_list
 from app.core.structure import skills_from_quotes
 from app.core.structure import parse_resume_profile, structure_job
 from app.core.tokens import chunk_text, job_vector_text
-from app.db import get_admin_db
+from app.db import admin_session, get_admin_db
 from app.models import AuditLog, CrawlState, Job, JobChunk, Match, SkillSynonym
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+logger = logging.getLogger(__name__)
 
 
 class LoginIn(BaseModel):
@@ -269,7 +272,13 @@ def recrawl(request: Request, session: Session = Depends(require_admin)):
 
 
 @router.put("/jobs/{code}")
-def edit_job(code: str, body: JobEdit, request: Request, session: Session = Depends(require_admin)):
+def edit_job(
+    code: str,
+    body: JobEdit,
+    request: Request,
+    background: BackgroundTasks,
+    session: Session = Depends(require_admin),
+):
     job = session.scalar(select(Job).where(Job.requisition_code == code))
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found.")
@@ -287,8 +296,9 @@ def edit_job(code: str, body: JobEdit, request: Request, session: Session = Depe
         job.polygraph_required = body.polygraph_required or None
     if body.needs_review is not None:
         job.needs_review = body.needs_review
+    digest = None
     if body.description_text is not None:
-        _apply_admin_description(session, job, redact_ssn(body.description_text), request)
+        digest = _store_admin_description(job, redact_ssn(body.description_text))
     if body.must_have_quotes is not None or body.nice_to_have_quotes is not None:
         quotes = dict(job.skill_quotes or {})
         if body.must_have_quotes is not None:
@@ -300,6 +310,16 @@ def edit_job(code: str, body: JobEdit, request: Request, session: Session = Depe
         job.skill_quotes = quotes
     _audit(session, "job_edit", job.id, "ok")
     session.commit()
+    if digest is not None:
+        keep_skills = body.must_have_quotes is not None or body.nice_to_have_quotes is not None
+        background.add_task(
+            _enrich_admin_description,
+            job.id,
+            digest,
+            keep_skills,
+            request.app.state.llm,
+            request.app.state.embedder,
+        )
     return _job_out(job)
 
 
@@ -307,6 +327,7 @@ def edit_job(code: str, body: JobEdit, request: Request, session: Session = Depe
 async def upload_description(
     code: str,
     request: Request,
+    background: BackgroundTasks,
     session: Session = Depends(require_admin),
     file: UploadFile | None = File(default=None),
     text: str | None = Form(default=None),
@@ -325,9 +346,17 @@ async def upload_description(
         body = text
     else:
         raise HTTPException(status_code=400, detail="Paste a description or upload a file.")
-    _apply_admin_description(session, job, redact_ssn(body), request)
+    digest = _store_admin_description(job, redact_ssn(body))
     _audit(session, "job_description", job.id, "admin")
     session.commit()
+    background.add_task(
+        _enrich_admin_description,
+        job.id,
+        digest,
+        False,
+        request.app.state.llm,
+        request.app.state.embedder,
+    )
     return _job_out(job)
 
 
@@ -590,34 +619,29 @@ def list_resumes(
 
 
 @router.post("/candidates/ask")
-def ask_candidates(body: AskIn, session: Session = Depends(require_admin)):
-    """Answer a recruiter question such as 'Show me all Software Testers.'"""
-    from app.models import Candidate
-
+def ask_candidates(body: AskIn, request: Request, session: Session = Depends(require_admin)):
+    """Answer a recruiter question such as 'ServiceNow people who live in Maryland.'"""
     message = body.message.strip()
-    labels = categories_for_question(message)
-    stmt = select(Candidate)
-    if labels:
-        stmt = stmt.where(or_(*(cast(Candidate.titles, String).ilike(f"%{label}%") for label in labels)))
-    elif message:
-        pattern = f"%{message.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')}%"
-        stmt = stmt.where(
-            or_(
-                Candidate.full_name.ilike(pattern, escape="\\"),
-                cast(Candidate.skills, String).ilike(pattern, escape="\\"),
-                Candidate.redacted_text.ilike(pattern, escape="\\"),
-            )
-        )
-    rows = session.scalars(stmt.order_by(nullslast(func.lower(Candidate.full_name))).limit(200)).all()
-    if labels:
-        answer = f"{len(rows)} {'person' if len(rows) == 1 else 'people'} in {', '.join(labels)}."
-    elif message:
-        answer = f"{len(rows)} {'person' if len(rows) == 1 else 'people'} matched that search."
-    else:
-        answer = "Ask for a category, such as Software Testers or Cybersecurity Engineers."
+    if not message:
+        return {
+            "answer": "Ask for a skill, a role, or a state, such as ServiceNow in Maryland or Software Testers.",
+            "categories": [],
+            "filters": None,
+            "unknown_location": 0,
+            "candidates": [],
+        }
+    result = find_candidates(session, message, request.app.state.llm)
+    wanted = {name.lower() for name in result.filters.skills}
+
+    def skill_names(row) -> list[str]:
+        names = [item.get("name") for item in (row.skills or []) if isinstance(item, dict) and item.get("name")]
+        return sorted(names, key=lambda name: name.lower() not in wanted)[:6]
+
     return {
-        "answer": answer,
-        "categories": labels,
+        "answer": describe(result),
+        "categories": result.filters.categories,
+        "filters": None if result.fallback else result.filters.as_dict(),
+        "unknown_location": result.unknown_location,
         "candidates": [
             {
                 "id": str(row.id),
@@ -625,13 +649,9 @@ def ask_candidates(body: AskIn, session: Session = Depends(require_admin)):
                 "email": row.email,
                 "location": row.location,
                 "titles": list(row.titles or []),
-                "skills": [
-                    item.get("name")
-                    for item in (row.skills or [])
-                    if isinstance(item, dict) and item.get("name")
-                ][:6],
+                "skills": skill_names(row),
             }
-            for row in rows
+            for row in result.rows
         ],
     }
 
@@ -700,37 +720,61 @@ def _new_candidate(digest: str, filename: str, path: str, redacted: str, profile
     )
 
 
-def _apply_admin_description(session: Session, job: Job, text: str, request: Request) -> None:
-    parsed = DetailParse(
-        description_text=text,
-        must_have_quotes=[],
-        nice_to_have_quotes=[],
-        needs_review=False,
-    )
-    structured = structure_job(parsed, request.app.state.llm)
-    job.description_text = structured["description_text"]
+def _store_admin_description(job: Job, text: str) -> str:
+    job.description_text = text
     job.description_source = "admin"
-    job.description_hash = hashlib.sha256(job.description_text.encode("utf-8")).hexdigest()
-    job.must_have_skills = structured["must_have_skills"] or job.must_have_skills
-    job.nice_to_have_skills = structured["nice_to_have_skills"] or job.nice_to_have_skills
-    if structured["clearance_required"]:
-        job.clearance_required = structured["clearance_required"]
-    if structured["polygraph_required"]:
-        job.polygraph_required = structured["polygraph_required"]
-    if structured["summary"]:
-        job.summary = structured["summary"]
-    job.skill_quotes = structured["skill_quotes"]
+    job.description_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return job.description_hash
+
+
+def _enrich_admin_description(job_id, digest: str, keep_skills: bool, llm, embedder) -> None:
+    """Read a saved description with the model and re-embed it, after the save has returned.
+
+    Skipped when a newer save replaced the text. keep_skills leaves the recruiter's
+    must/nice lists alone when they were sent with the same save.
+    """
+    session = admin_session()
     try:
-        session.query(JobChunk).filter(JobChunk.job_id == job.id).delete()
-        chunks = chunk_text(job.description_text or "")
-        vectors = request.app.state.embedder.embed_documents(chunks) if chunks else []
-        for index, (chunk, vector) in enumerate(zip(chunks, vectors)):
-            session.add(JobChunk(job_id=job.id, ord=index, text=chunk, embedding=vector))
-        whole = job_vector_text(job.title or "", job.location or "", job.summary or "", job.description_text or "")
-        embedded = request.app.state.embedder.embed_documents([whole])
-        job.embedding = embedded[0] if embedded else None
+        job = session.get(Job, job_id)
+        if job is None or job.description_hash != digest:
+            return
+        parsed = DetailParse(
+            description_text=job.description_text or "",
+            must_have_quotes=[],
+            nice_to_have_quotes=[],
+            needs_review=False,
+        )
+        structured = structure_job(parsed, llm)
+        session.refresh(job)
+        if job.description_hash != digest:
+            return
+        if not keep_skills:
+            job.must_have_skills = structured["must_have_skills"] or job.must_have_skills
+            job.nice_to_have_skills = structured["nice_to_have_skills"] or job.nice_to_have_skills
+            job.skill_quotes = structured["skill_quotes"]
+        if structured["clearance_required"]:
+            job.clearance_required = structured["clearance_required"]
+        if structured["polygraph_required"]:
+            job.polygraph_required = structured["polygraph_required"]
+        if structured["summary"]:
+            job.summary = structured["summary"]
+        try:
+            session.query(JobChunk).filter(JobChunk.job_id == job.id).delete()
+            chunks = chunk_text(job.description_text or "")
+            vectors = embedder.embed_documents(chunks) if chunks else []
+            for index, (chunk, vector) in enumerate(zip(chunks, vectors)):
+                session.add(JobChunk(job_id=job.id, ord=index, text=chunk, embedding=vector))
+            whole = job_vector_text(job.title or "", job.location or "", job.summary or "", job.description_text or "")
+            embedded = embedder.embed_documents([whole])
+            job.embedding = embedded[0] if embedded else None
+        except Exception:
+            job.embedding = job.embedding
+        session.commit()
     except Exception:
-        job.embedding = job.embedding
+        session.rollback()
+        logger.exception("Background read of job description failed for %s", job_id)
+    finally:
+        session.close()
 
 
 def _job_out(job: Job) -> dict:

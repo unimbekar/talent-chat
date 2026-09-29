@@ -39,6 +39,9 @@ def rank_jobs(
     llm: LLMClient,
     required_skills: list[str] | None = None,
 ) -> list[Match]:
+    # Scores come from the résumé and the posting. A model call per job
+    # held the API worker long enough that Find and a second rank timed out.
+    del llm
     session.query(Match).filter(Match.candidate_id == candidate.id).delete()
     jobs = session.scalars(select(Job).where(Job.status == "open")).all()
     names = {skill["name"] if isinstance(skill, dict) else str(skill) for skill in (candidate.skills or [])}
@@ -75,9 +78,6 @@ def rank_jobs(
             job_clearance=job.clearance_required,
             job_poly=job.polygraph_required,
         )
-        # Scores come from the résumé and the posting. A model call per job
-        # held the API worker long enough that Find and a second rank timed out.
-        del llm
         row = Match(
             candidate_id=candidate.id,
             job_id=job.id,

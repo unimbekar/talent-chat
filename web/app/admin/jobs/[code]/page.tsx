@@ -50,6 +50,7 @@ export default function JobDetailPage() {
   const [must, setMust] = useState<string[]>([]);
   const [desired, setDesired] = useState<string[]>([]);
   const [replacement, setReplacement] = useState("");
+  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [candidates, setCandidates] = useState<JobCandidate[]>([]);
@@ -70,6 +71,7 @@ export default function JobDetailPage() {
       setClearance(data.clearance_required || "");
       setMust(postedSkills(data.must_have_quotes, data.must_have_skills));
       setDesired(postedSkills(data.nice_to_have_quotes, data.nice_to_have_skills));
+      setReplacement(adminDescription(data));
     });
     fetch(`/api/admin/jobs/${code}/candidates`).then(async (response) => {
       if (!response.ok) return;
@@ -80,28 +82,47 @@ export default function JobDetailPage() {
 
   async function save(event: FormEvent) {
     event.preventDefault();
-    setMessage("");
-    const response = await fetch(`/api/admin/jobs/${code}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        location,
-        clearance_required: clearance,
-        must_have_quotes: must.map((skill) => skill.trim()).filter(Boolean),
-        nice_to_have_quotes: desired.map((skill) => skill.trim()).filter(Boolean),
-        description_text: replacement.trim() || undefined,
-      }),
-    });
-    if (!response.ok) {
-      setMessage("Save failed.");
-      return;
+    if (saving || !job) return;
+    const description = replacement.trim();
+    const descriptionChanged = Boolean(description) && description !== adminDescription(job).trim();
+    setSaving(true);
+    setMessage("Saving…");
+    try {
+      const response = await fetch(`/api/admin/jobs/${code}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          location,
+          clearance_required: clearance,
+          must_have_quotes: must.map((skill) => skill.trim()).filter(Boolean),
+          nice_to_have_quotes: desired.map((skill) => skill.trim()).filter(Boolean),
+          description_text: descriptionChanged ? description : undefined,
+        }),
+      });
+      if (response.status === 401) {
+        router.push("/admin/login");
+        return;
+      }
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        setMessage(detail?.detail || detail?.message || "Save failed. Reload the page to see what was stored.");
+        return;
+      }
+      const data = (await response.json()) as JobDetail;
+      setJob(data);
+      setMust(postedSkills(data.must_have_quotes, data.must_have_skills));
+      setDesired(postedSkills(data.nice_to_have_quotes, data.nice_to_have_skills));
+      setReplacement(adminDescription(data));
+      setMessage(
+        descriptionChanged
+          ? `Saved ${code}. The description above now shows your text. The summary and search index update within a minute.`
+          : `Saved ${code}.`,
+      );
+    } catch {
+      setMessage("Save did not finish. Reload the page to see what was stored.");
+    } finally {
+      setSaving(false);
     }
-    const data = (await response.json()) as JobDetail;
-    setJob(data);
-    setMust(postedSkills(data.must_have_quotes, data.must_have_skills));
-    setDesired(postedSkills(data.nice_to_have_quotes, data.nice_to_have_skills));
-    setReplacement("");
-    setMessage(`Saved ${code}.`);
   }
 
   if (error) {
@@ -185,11 +206,13 @@ export default function JobDetailPage() {
         </div>
         <label className="text-sm">
           Internal description (replaces the careers-page text)
-          <Textarea value={replacement} onChange={(event) => setReplacement(event.target.value)} className="mt-1" />
+          <Textarea value={replacement} onChange={(event) => setReplacement(event.target.value)} rows={6} className="mt-1" />
         </label>
         <div className="flex items-center gap-3">
-          <Button type="submit">Save</Button>
-          {message && <p className="text-sm">{message}</p>}
+          <Button type="submit" disabled={saving}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
+          {message && <p className="text-sm" role="status">{message}</p>}
         </div>
       </form>
     </div>
@@ -216,6 +239,10 @@ function CandidateScore({
       <p className="text-xs text-ink/70">{total === 0 ? `No ${label.toLowerCase()} skills` : `${hit} of ${total} lines`}</p>
     </div>
   );
+}
+
+function adminDescription(job: JobDetail): string {
+  return job.description_source === "admin" ? job.description_text || "" : "";
 }
 
 function postedSkills(quotes: string[] | undefined, names: string[] | undefined): string[] {
