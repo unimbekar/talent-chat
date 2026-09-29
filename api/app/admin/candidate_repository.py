@@ -1,11 +1,11 @@
 """Candidate persistence. Public code must not import this module."""
 
-from pathlib import Path
 import uuid
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.files import delete_stored
 from app.models import Candidate, CandidateChunk, Match
 
 
@@ -18,10 +18,7 @@ def get_candidate(session: Session, candidate_id: uuid.UUID) -> Candidate | None
 
 
 def delete_candidate(session: Session, candidate: Candidate) -> None:
-    if candidate.original_path:
-        path = Path(candidate.original_path)
-        if path.exists():
-            path.unlink()
+    delete_stored(candidate.original_path)
     session.query(Match).filter(Match.candidate_id == candidate.id).delete()
     session.query(CandidateChunk).filter(CandidateChunk.candidate_id == candidate.id).delete()
     session.delete(candidate)

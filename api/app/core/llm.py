@@ -1,4 +1,4 @@
-"""One LLM client. Phase 1 implements openai_compat. Bedrock is a Phase 1.5 stub."""
+"""One LLM client. openai_compat talks to the DGX. bedrock talks to Amazon Bedrock."""
 
 from typing import Protocol
 import json
@@ -83,15 +83,75 @@ class OpenAICompatClient:
 
 
 class BedrockClient:
-    """Phase 1.5 implements the Bedrock Converse API. This stub does not call AWS."""
+    """Amazon Bedrock Converse API. Nova models are not on the OpenAI wire format."""
+
+    def __init__(
+        self,
+        model: str,
+        region: str = "us-east-1",
+        timeout: float = 30.0,
+        client=None,
+    ) -> None:
+        self.model = model
+        self.region = region
+        self.timeout = timeout
+        self._client = client
 
     def complete(self, *, system: str, user: str, temperature: float, json_mode: bool) -> str:
-        raise LLMError("The bedrock backend is implemented in Phase 1.5 and is not available in Phase 1.")
+        if not self.model.strip():
+            raise LLMError("LLM_MODEL is empty")
+        runtime = self._runtime()
+        payload = {
+            "modelId": self.model,
+            "system": [{"text": system}],
+            "messages": [{"role": "user", "content": [{"text": user}]}],
+            "inferenceConfig": {"maxTokens": 4096, "temperature": temperature},
+        }
+        last_error: Exception | None = None
+        for _attempt in range(2):
+            try:
+                body = runtime.converse(**payload)
+                blocks = body["output"]["message"]["content"]
+                return "".join(block.get("text", "") for block in blocks)
+            except (KeyError, IndexError, TypeError) as exc:
+                last_error = exc
+            except Exception as exc:
+                if not _bedrock_transport_error(exc):
+                    raise
+                last_error = exc
+        raise LLMError(f"bedrock request failed: {last_error}")
+
+    def _runtime(self):
+        if self._client is not None:
+            return self._client
+        import boto3
+        from botocore.config import Config
+
+        return boto3.client(
+            "bedrock-runtime",
+            region_name=self.region,
+            config=Config(
+                connect_timeout=5,
+                read_timeout=self.timeout,
+                retries={"max_attempts": 1},
+            ),
+        )
 
 
-def build_llm_client(backend: str, base_url: str, model: str, api_key: str) -> LLMClient:
+def _bedrock_transport_error(exc: Exception) -> bool:
+    name = type(exc).__name__
+    return name in {"ClientError", "BotoCoreError", "EndpointConnectionError", "ReadTimeoutError", "ConnectTimeoutError"}
+
+
+def build_llm_client(
+    backend: str,
+    base_url: str,
+    model: str,
+    api_key: str,
+    region: str = "us-east-1",
+) -> LLMClient:
     if backend == "bedrock":
-        return BedrockClient()
+        return BedrockClient(model, region=region)
     if backend != "openai_compat":
         raise LLMError(f"Unknown LLM_BACKEND {backend}")
     return OpenAICompatClient(base_url, model, api_key)

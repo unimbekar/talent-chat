@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.embed import Embedder, cosine
-from app.core.llm import LLMClient, LLMError
+from app.core.llm import LLMClient
 from app.core.score import MANDATORY_BAR, covers_title, rank_pair, required_coverage, section_coverage
 from app.core.tokens import candidate_vector_text, chunk_text
 from app.models import Candidate, CandidateChunk, Job, Match
@@ -75,24 +75,9 @@ def rank_jobs(
             job_clearance=job.clearance_required,
             job_poly=job.polygraph_required,
         )
-        explanation = None
-        try:
-            explanation = llm.complete(
-                system=(
-                    "Explain in 2 to 4 sentences why this candidate fits this open job. "
-                    "Use only the overlapping skills and the quotes. Do not add skills that are absent."
-                ),
-                user=(
-                    f"job {job.requisition_code} {job.title} {job.location}\n"
-                    f"overlap {scored['overlap_skills']}\n"
-                    f"job quotes {quotes}\n"
-                    f"resume quotes {resume_quotes}"
-                ),
-                temperature=0.2,
-                json_mode=False,
-            )
-        except LLMError:
-            explanation = None
+        # Scores come from the résumé and the posting. A model call per job
+        # held the API worker long enough that Find and a second rank timed out.
+        del llm
         row = Match(
             candidate_id=candidate.id,
             job_id=job.id,
@@ -105,7 +90,7 @@ def rank_jobs(
             clearance_flag=scored["clearance_flag"],
             job_quotes=quotes,
             resume_quotes=resume_quotes,
-            explanation=explanation,
+            explanation=None,
         )
         row.mandatory_pct = mandatory_pct
         row.mandatory_hit = mandatory["hit"]

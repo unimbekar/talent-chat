@@ -1,0 +1,20 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$PUBLIC_HOST} {
+	encode gzip
+	handle /api/* {
+		uri strip_prefix /api
+		reverse_proxy api:8000 {
+			# Replace any client-supplied value. The API trusts the first address.
+			header_up X-Forwarded-For {remote_host}
+			transport http {
+				response_header_timeout 10m
+			}
+		}
+	}
+	handle {
+		reverse_proxy web:3000
+	}
+}

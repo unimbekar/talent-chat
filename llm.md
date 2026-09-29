@@ -70,7 +70,7 @@ docker compose up -d api
 
 `host.docker.internal` is how the API container reaches Ollama on the host. From the host itself the same server is `http://127.0.0.1:11434`.
 
-Phase 1.5 will switch `LLM_BACKEND` to `bedrock` and call Amazon Bedrock in `us-east-1` (a Nova Micro or Nova Lite class model). That backend is a stub in this build and raises an error if selected. Do not point this app at the OpenAI API, Google Gemini, or a consumer Anthropic account.
+Production uses `LLM_BACKEND=bedrock` and Amazon Bedrock in `us-east-1`. The model id is `amazon.nova-lite-v1:0` (Nova Lite, on-demand in that region). The client calls the Converse API, times out after 30 seconds, and tries once more. A Bedrock error becomes the same “Explanations are unavailable right now” notice the Spark shows when Ollama is down. Job cards still return. Leave this Spark on `openai_compat`. Do not point production at the OpenAI API, Google Gemini, or a consumer Anthropic account. The instance setup is in [deploy.md](deploy.md).
 
 ## Check
 

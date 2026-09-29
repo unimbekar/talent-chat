@@ -1,0 +1,380 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Janus Soft public job chat. One t4g.medium in us-east-1, a private S3 bucket,
+  and an instance role. The instance clones the git repo and runs docker-compose.prod.yml.
+  Do not put AWS access keys in this template.
+
+Rules:
+  InUsEast1:
+    Assertions:
+      - Assert: !Equals [!Ref "AWS::Region", "us-east-1"]
+        AssertDescription: Create this stack in us-east-1 so Bedrock and the bucket stay in that region.
+
+Parameters:
+  PublicHost:
+    Type: String
+    Description: DNS name for the chat, such as jobs.janus-soft.com. www.janus-soft.com stays on Google Sites.
+    AllowedPattern: "^[a-z0-9]([a-z0-9.-]{0,253}[a-z0-9])?$"
+  AcmEmail:
+    Type: String
+    Description: Address Let's Encrypt uses for the certificate on PublicHost.
+    AllowedPattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+  BucketName:
+    Type: String
+    Description: Private bucket for résumé originals and database dumps. Globally unique, lowercase.
+    AllowedPattern: "^[a-z0-9][a-z0-9-]{2,61}[a-z0-9]$"
+  HostedZoneId:
+    Type: String
+    Default: ""
+    Description: Optional Route 53 hosted zone id. Leave empty and create the A record yourself.
+  FrameAncestor:
+    Type: String
+    Default: "https://www.janus-soft.com"
+    Description: Origin allowed to iframe /chat.
+  BedrockModel:
+    Type: String
+    Default: amazon.nova-lite-v1:0
+    Description: On-demand Nova Lite in us-east-1. Do not use the us. geo profile.
+  RepoUrl:
+    Type: String
+    Default: https://github.com/unimbekar/talent-chat.git
+    Description: Public HTTPS git URL. This branch must already contain the Phase 1.5 code.
+  GitRef:
+    Type: String
+    Default: main
+  GitTokenSecretArn:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: Optional Secrets Manager ARN whose SecretString is a GitHub token. Leave empty for a public repo.
+  SshCidr:
+    Type: String
+    Default: ""
+    Description: Optional CIDR allowed to SSH on port 22. Session Manager works with this left empty.
+    AllowedPattern: "^$|^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$"
+  KeyName:
+    Type: String
+    Default: ""
+    Description: Optional EC2 key pair name. Used only when SshCidr is set.
+
+Conditions:
+  HasDns: !Not [!Equals [!Ref HostedZoneId, ""]]
+  HasSsh: !Not [!Equals [!Ref SshCidr, ""]]
+  HasKey: !Not [!Equals [!Ref KeyName, ""]]
+  HasGitToken: !Not [!Equals [!Ref GitTokenSecretArn, ""]]
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.20.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-vpc
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.20.1.0/24
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-public
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+
+  DefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  FilesBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Ref BucketName
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-dumps-after-14-days
+            Prefix: dumps/
+            Status: Enabled
+            ExpirationInDays: 14
+      Tags:
+        - Key: Name
+          Value: !Ref BucketName
+
+  FilesBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FilesBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt FilesBucket.Arn
+              - !Sub ${FilesBucket.Arn}/*
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
+  AppSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Sub talent-chat/${AWS::StackName}
+      Description: Recruiter password, session secret, and database passwords. Written by the instance on first boot.
+      GenerateSecretString:
+        PasswordLength: 32
+        ExcludePunctuation: true
+
+  AppRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${AWS::StackName}-instance
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: talent-chat
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: NovaLiteInThisRegion
+                Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource: !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/${BedrockModel}"
+              - Sid: ResumeAndDumpObjects
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:DeleteObject
+                Resource:
+                  - !Sub ${FilesBucket.Arn}/originals/*
+                  - !Sub ${FilesBucket.Arn}/dumps/*
+              - Sid: ListThosePrefixes
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt FilesBucket.Arn
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - originals/*
+                      - dumps/*
+              - Sid: AppSecretValue
+                Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:PutSecretValue
+                Resource:
+                  - !Ref AppSecret
+                  - !If [HasGitToken, !Ref GitTokenSecretArn, !Ref AppSecret]
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref AppRole
+
+  AppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Public HTTP and HTTPS. Database and API ports stay closed.
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-web
+
+  SshIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: HasSsh
+    Properties:
+      GroupId: !Ref AppSecurityGroup
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      CidrIp: !Ref SshCidr
+
+  AppInstance:
+    Type: AWS::EC2::Instance
+    DependsOn:
+      - DefaultRoute
+      - FilesBucketPolicy
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT60M
+    Properties:
+      InstanceType: t4g.medium
+      ImageId: "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64}}"
+      IamInstanceProfile: !Ref InstanceProfile
+      KeyName: !If [HasKey, !Ref KeyName, !Ref "AWS::NoValue"]
+      SubnetId: !Ref PublicSubnet
+      SecurityGroupIds:
+        - !Ref AppSecurityGroup
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpTokens: required
+        HttpPutResponseHopLimit: 2
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 30
+            VolumeType: gp3
+            Encrypted: true
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euo pipefail
+          exec > /var/log/talent-userdata.log 2>&1
+          status=1
+          finish() {
+            signal=/opt/aws/bin/cfn-signal
+            if [ ! -x "$signal" ]; then
+              signal=$(command -v cfn-signal || true)
+            fi
+            if [ -n "$signal" ]; then
+              "$signal" -e "$status" --stack ${AWS::StackName} --resource AppInstance --region ${AWS::Region} || true
+            fi
+          }
+          trap finish EXIT
+          dnf install -y docker git aws-cfn-bootstrap
+          systemctl enable --now docker
+          mkdir -p /usr/libexec/docker/cli-plugins /usr/local/lib/docker/cli-plugins
+          curl -fsSL -o /usr/libexec/docker/cli-plugins/docker-compose \
+            https://github.com/docker/compose/releases/download/v2.32.4/docker-compose-linux-aarch64
+          chmod +x /usr/libexec/docker/cli-plugins/docker-compose
+          cp /usr/libexec/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
+          rm -rf /opt/talent-chat
+          git_token=""
+          if [ -n "${GitTokenSecretArn}" ]; then
+            git_token=$(aws secretsmanager get-secret-value --region ${AWS::Region} --secret-id "${GitTokenSecretArn}" --query SecretString --output text)
+          fi
+          if [ -n "$git_token" ]; then
+            askpass=$(mktemp)
+            printf '%s\n' '#!/bin/sh' 'case "$1" in *[Uu]sername*) echo x-access-token ;; *) echo "$GIT_TOKEN" ;; esac' > "$askpass"
+            chmod 700 "$askpass"
+            GIT_ASKPASS="$askpass" GIT_TOKEN="$git_token" GIT_TERMINAL_PROMPT=0 \
+              git clone --depth 1 --branch ${GitRef} ${RepoUrl} /opt/talent-chat
+            rm -f "$askpass"
+            unset git_token GIT_TOKEN
+            git -C /opt/talent-chat remote set-url origin ${RepoUrl}
+          else
+            git clone --depth 1 --branch ${GitRef} ${RepoUrl} /opt/talent-chat
+          fi
+          export TALENT_SECRET_ID=${AppSecret}
+          export TALENT_BUCKET=${BucketName}
+          export TALENT_HOST=${PublicHost}
+          export TALENT_EMAIL=${AcmEmail}
+          export TALENT_FRAME=${FrameAncestor}
+          export TALENT_MODEL=${BedrockModel}
+          export TALENT_REGION=${AWS::Region}
+          bash /opt/talent-chat/deploy/bootstrap.sh
+          status=0
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-app
+
+  AppEip:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-eip
+
+  AppEipAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt AppEip.AllocationId
+      InstanceId: !Ref AppInstance
+
+  DnsRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: HasDns
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref PublicHost
+      Type: A
+      TTL: 60
+      ResourceRecords:
+        - !Ref AppEip
+
+Outputs:
+  PublicIp:
+    Description: Address for the DNS A record when HostedZoneId was left empty.
+    Value: !Ref AppEip
+  ChatUrl:
+    Description: Public chat. HTTPS works after DNS points here and Caddy finishes the certificate.
+    Value: !Sub https://${PublicHost}/chat
+  AdminUrl:
+    Description: Recruiter sign-in. Do not link this from the public careers page.
+    Value: !Sub https://${PublicHost}/admin
+  SecretName:
+    Description: Read admin_password from this secret after the stack is CREATE_COMPLETE. The password is not a stack output.
+    Value: !Sub talent-chat/${AWS::StackName}
+  BucketName:
+    Value: !Ref FilesBucket
+  InstanceId:
+    Value: !Ref AppInstance

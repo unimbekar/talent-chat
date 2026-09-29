@@ -20,13 +20,50 @@ def test_strip_think_blocks_and_fences():
     assert "<think>" not in strip_model_text(raw)
 
 
-def test_bedrock_stub_is_not_implemented():
+class _BedrockFake:
+    def __init__(self, responses: list) -> None:
+        self.responses = list(responses)
+        self.calls: list[dict] = []
+
+    def converse(self, **kwargs):
+        self.calls.append(kwargs)
+        item = self.responses.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+
+def test_bedrock_converse_returns_text_and_retries_once():
+    class Denied(Exception):
+        pass
+
+    Denied.__name__ = "ClientError"
+    fake = _BedrockFake(
+        [
+            Denied("AccessDeniedException"),
+            {"output": {"message": {"content": [{"text": "Two jobs are open."}]}}},
+        ]
+    )
+    client = BedrockClient("amazon.nova-lite-v1:0", region="us-east-1", client=fake)
+    assert client.complete(system="sys", user="jobs", temperature=0.2, json_mode=False) == "Two jobs are open."
+    assert len(fake.calls) == 2
+    assert fake.calls[0]["modelId"] == "amazon.nova-lite-v1:0"
+    assert fake.calls[0]["inferenceConfig"]["temperature"] == 0.2
+
+
+def test_bedrock_failure_is_an_llm_error():
+    class Down(Exception):
+        pass
+
+    Down.__name__ = "EndpointConnectionError"
+    fake = _BedrockFake([Down("offline"), Down("offline")])
+    client = BedrockClient("amazon.nova-lite-v1:0", client=fake)
     try:
-        BedrockClient().complete(system="s", user="u", temperature=0, json_mode=True)
+        client.complete(system="s", user="u", temperature=0, json_mode=False)
     except LLMError as exc:
-        assert "Phase 1.5" in str(exc)
+        assert "offline" in str(exc)
     else:
-        raise AssertionError("bedrock stub should not call AWS")
+        raise AssertionError("bedrock outage should raise LLMError")
 
 
 def test_three_thousand_token_resume_chunks_and_vector_cap():

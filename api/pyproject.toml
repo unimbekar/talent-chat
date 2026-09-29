@@ -20,6 +20,7 @@ dependencies = [
   "pyyaml>=6.0",
   "python-multipart>=0.0.18",
   "tokenizers>=0.21",
+  "boto3>=1.43.103",
 ]
 
 [dependency-groups]

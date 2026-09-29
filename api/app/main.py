@@ -29,7 +29,13 @@ def _crawl_once() -> None:
             session,
             fetcher,
             settings.careers_url,
-            llm=build_llm_client(settings.llm_backend, settings.llm_base_url, settings.llm_model, settings.llm_api_key),
+            llm=build_llm_client(
+                settings.llm_backend,
+                settings.llm_base_url,
+                settings.llm_model,
+                settings.llm_api_key,
+                settings.aws_region,
+            ),
             embedder=FastEmbedder(settings.embedding_model),
         )
     finally:
@@ -49,8 +55,14 @@ async def _crawl_loop() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+    if settings.llm_backend == "bedrock" and not settings.s3_bucket.strip():
+        logger.warning("S3_BUCKET is empty while LLM_BACKEND=bedrock; résumé files stay on container disk")
     app.state.llm = build_llm_client(
-        settings.llm_backend, settings.llm_base_url, settings.llm_model, settings.llm_api_key
+        settings.llm_backend,
+        settings.llm_base_url,
+        settings.llm_model,
+        settings.llm_api_key,
+        settings.aws_region,
     )
     app.state.embedder = FastEmbedder(settings.embedding_model)
     task = None

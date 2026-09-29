@@ -34,6 +34,7 @@ export default function JobsPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [query, setQuery] = useState("");
 
   async function load() {
     const response = await fetch("/api/admin/jobs");
@@ -92,6 +93,13 @@ export default function JobsPage() {
       )}
       {error && <p className="text-sm text-red-700">{error}</p>}
       {message && <p className="text-sm">{message}</p>}
+      <input
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Filter by code, title, or city"
+        aria-label="Filter jobs"
+        className="w-full rounded-md border border-line bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-pine"
+      />
       <div className="overflow-x-auto rounded-lg border border-line bg-card">
         <table className="w-full min-w-[640px] text-left text-sm">
           <thead className="border-b border-line text-xs uppercase tracking-wide text-ink/60">
@@ -105,7 +113,13 @@ export default function JobsPage() {
             </tr>
           </thead>
           <tbody>
-            {(screen?.jobs || []).filter((job) => job.status !== "closed").map((job) => (
+            {(screen?.jobs || [])
+              .filter((job) => job.status !== "closed")
+              .filter((job) => {
+                const haystack = `${job.requisition_code} ${job.title || ""} ${job.location || ""}`.toLowerCase();
+                return haystack.includes(query.trim().toLowerCase());
+              })
+              .map((job) => (
               <tr key={job.requisition_code} className="border-b border-line last:border-0">
                 <td className="px-3 py-2 font-mono">
                   <Link href={`/admin/jobs/${job.requisition_code}`} className="text-pine underline">

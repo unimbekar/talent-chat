@@ -35,7 +35,9 @@ function ReviewPage() {
   const router = useRouter();
   const params = useSearchParams();
   const [jobs, setJobs] = useState<JobOption[]>([]);
-  const [candidates, setCandidates] = useState<CandidateOption[]>([]);
+  const [candidateQuery, setCandidateQuery] = useState("");
+  const [candidateOpen, setCandidateOpen] = useState(false);
+  const [candidateHits, setCandidateHits] = useState<CandidateOption[]>([]);
   const [review, setReview] = useState<Review | null>(null);
   const [error, setError] = useState("");
   const job = params.get("job") || "";
@@ -51,16 +53,23 @@ function ReviewPage() {
       const data = await response.json();
       setJobs((data.jobs || []).filter((item: JobOption) => item.status !== "closed"));
     });
-    fetch("/api/admin/resumes").then(async (response) => {
-      if (response.status === 401) {
-        router.push("/admin/login");
-        return;
-      }
-      if (!response.ok) return;
-      const data = await response.json();
-      setCandidates(data.candidates || []);
-    });
   }, [router]);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      const params = new URLSearchParams({ q: candidateQuery, page_size: "8" });
+      fetch(`/api/admin/resumes?${params}`).then(async (response) => {
+        if (response.status === 401) {
+          router.push("/admin/login");
+          return;
+        }
+        if (!response.ok) return;
+        const data = await response.json();
+        setCandidateHits(data.candidates || []);
+      });
+    }, 200);
+    return () => window.clearTimeout(handle);
+  }, [candidateQuery, router]);
 
   useEffect(() => {
     if (!job || !candidate) {
@@ -113,23 +122,40 @@ function ReviewPage() {
             ))}
           </select>
         </label>
-        <label className="text-sm">
+        <div className="text-sm">
           Résumé
-          <select
+          <input
             aria-label="Résumé"
-            value={candidate}
-            onChange={(event) => choose(job, event.target.value)}
+            value={candidateQuery}
+            onChange={(event) => {
+              setCandidateQuery(event.target.value);
+              setCandidateOpen(true);
+            }}
+            onFocus={() => setCandidateOpen(true)}
+            placeholder="Type a few letters of the name"
             className="mt-1 w-full rounded-md border border-line bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-pine"
-          >
-            <option value="">Choose a résumé</option>
-            {candidates.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.full_name || "Unnamed résumé"}
-                {item.original_filename ? ` · ${item.original_filename}` : ""}
-              </option>
-            ))}
-          </select>
-        </label>
+          />
+          {candidateOpen && candidateQuery && candidateHits.length > 0 && (
+            <ul className="mt-1 overflow-hidden rounded-md border border-line bg-card">
+              {candidateHits.map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    className="w-full px-3 py-2 text-left hover:bg-desk"
+                    onClick={() => {
+                      choose(job, item.id);
+                      setCandidateQuery(item.full_name || item.original_filename || "");
+                      setCandidateOpen(false);
+                    }}
+                  >
+                    {item.full_name || "Unnamed résumé"}
+                    {item.original_filename ? ` · ${item.original_filename}` : ""}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
       {error && <p className="text-sm text-red-700">{error}</p>}
       {job && candidate && !review && !error && <p className="text-sm">Comparing…</p>}

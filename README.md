@@ -10,6 +10,8 @@ This repository is the recruiting assistant for [Janus Soft Inc.](https://www.ja
 | [postgres.md](postgres.md) | Database setup: connect, read, purge, and troubleshoot `talent`. |
 | [llm.md](llm.md) | The chat model (`qwen3.6` on Ollama) and the FastEmbed embedding model. |
 | [workflow.md](workflow.md) | How `/chat` and `/admin` reach each API, and which container handles the call. |
+| [deploy.md](deploy.md) | Phase 1.5: the public instance, Bedrock, private S3, Caddy, and backup restore. |
+| [aws_deploy.md](aws_deploy.md) | AWS resources in the CloudFormation stack, and the request flow through them. |
 | [PROMPT.md](PROMPT.md) | The original Phase 1 kickoff. The application is already in this repository. |
 | `docs/diagrams/` | Diagram sources (`.mmd`) and rendered PNGs. Re-render with `scripts/render-diagrams.sh`. |
 | `tests/fixtures/careers/` | Snapshot of the live listing and detail pages (2026-09-27), used as parser fixtures. |
@@ -99,8 +101,10 @@ The Compose stack is `web`, `api`, and `postgres` (`pgvector/pgvector:pg16`). Im
 4. Start the stack from the repository root:
 
    ```bash
-   docker compose up --build
+   docker compose up -d --build
    ```
+
+   Day-to-day start, restart, and stop commands are in [Start, restart, and stop on the DGX Spark](#start-restart-and-stop-on-the-dgx-spark).
 
    Public chat: [http://localhost:3000/chat](http://localhost:3000/chat)
 
@@ -110,4 +114,82 @@ The Compose stack is `web`, `api`, and `postgres` (`pgvector/pgvector:pg16`). Im
 
    Postgres is published only on `127.0.0.1:5432`. The API port stays on the Compose network. The first start crawls `https://www.janus-soft.com/career` when `CRAWL_ON_START` is true.
 
+## Start, restart, and stop on the DGX Spark
+
+Run every command from the repository root (`~/spark-dev-workspace/projects/talent-chat`). The stack has four containers: `postgres`, `api`, `web`, and `ollama-bridge`. Ollama is not part of Compose. It runs on the Spark as a systemd service.
+
+### Start
+
+1. Make sure Ollama is up and the chat model is present:
+
+   ```bash
+   systemctl status ollama --no-pager   # start it with: sudo systemctl start ollama
+   ollama list | grep qwen3.6
+   ```
+
+   If Ollama is down, the stack still starts. Keyword search and line coverage work, and chat explanations say they are unavailable.
+
+2. Start the stack in the background:
+
+   ```bash
+   docker compose up -d --build
+   ```
+
+   `-d` returns the prompt. Without it the stack stops when you close the terminal. The first build takes several minutes. Later starts reuse the images.
+
+   On a fresh machine, `ollama-bridge` uses the `talent-chat-api` image. If Compose tries to pull that image and fails, build it first with `docker compose build api`, then run the `up` command again.
+
+3. Check that it is healthy:
+
+   ```bash
+   docker compose ps
+   ```
+
+   `postgres` and `api` should show `(healthy)`. `web` waits for `api` to become healthy, which can take up to a minute on the first start while the careers crawl runs.
+
+4. Open the app. The host port comes from `WEB_PORT` in `.env` (this Spark uses `3010`; the default is `3000`):
+
+   - Public chat: `http://localhost:3010/chat`
+   - Recruiter desk: `http://localhost:3010/admin`
+
+   From your laptop over Tailscale, use the Spark's Tailscale address instead of `localhost`, for example `http://100.65.241.97:3010/chat`. The web port listens on all interfaces. Postgres stays on `127.0.0.1` only.
+
+### Restart
+
+Choose the restart based on what changed.
+
+| What changed | Command |
+| --- | --- |
+| Nothing; a container is stuck | `docker compose restart api` (or `web`, `postgres`, `ollama-bridge`) |
+| `.env` values | `docker compose up -d` — `restart` does not reload `.env`; `up -d` recreates only the containers whose settings changed |
+| Code under `api/` or `web/` | `docker compose up -d --build api web` |
+| Ollama itself | `sudo systemctl restart ollama`, then `docker compose restart ollama-bridge` if chat explanations stay unavailable |
+| Everything | `docker compose down && docker compose up -d --build` |
+
+Set `CRAWL_ON_START=false` in `.env` if you restart often and don't want the API to re-crawl the careers page on each start.
+
+### Stop
+
+```bash
+docker compose stop    # stop containers, keep them for a fast start later
+docker compose down    # stop and remove containers and the network
+```
+
+Both keep your data. Jobs, matches, and admin sessions live in the `talent-chat_pgdata` volume. Uploaded résumés live in `talent-chat_uploads`.
+
+`docker compose down -v` also deletes both volumes. That erases the database and every uploaded résumé. Use it only when you mean to start from an empty database.
+
+### Logs and quick checks
+
+```bash
+docker compose logs -f api                  # follow API logs (Ctrl+C to stop following)
+docker compose logs web --tail 50
+docker compose logs ollama-bridge --tail 20 # should show the 172.17.0.1:11434 listen line
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3010/chat   # expect 200
+```
+
+If port `3010` is already taken, change `WEB_PORT` in `.env` and run `docker compose up -d`.
+
 Do not commit real résumés, `.env`, or `secrets/`. Use synthetic résumés in git. Drive sync is not part of this build.
+
+The public site is a separate machine. [deploy.md](deploy.md) covers the `t4g.medium`, Bedrock, the private bucket, and Caddy. Do not point the Spark compose file at that bucket.

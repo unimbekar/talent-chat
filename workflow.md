@@ -20,7 +20,7 @@ Related guides: [ARCHITECTURE.md](ARCHITECTURE.md), [llm.md](llm.md), [postgres.
 | `ollama-bridge` | `talent-chat-ollama-bridge-1` | Host network. Listens on `172.17.0.1:11434`. | `api`, which calls `host.docker.internal:11434` |
 | — | Ollama on the Spark (systemd, not Compose) | `127.0.0.1:11434` only | The bridge, and anything on the Spark itself |
 
-FastEmbed (`nomic-embed-text-v1.5`) runs inside the `api` process. It does not call Ollama. Résumé originals live on the `uploads` volume, mounted in `api` at `/app/data/uploads`.
+FastEmbed (`nomic-embed-text-v1.5`) runs inside the `api` process. It does not call Ollama. On the Spark, résumé originals live on the `uploads` volume, mounted in `api` at `/app/data/uploads`. When `S3_BUCKET` is set, those bytes go to a private S3 object instead. That layout is [deploy.md](deploy.md).
 
 `host.docker.internal` is `172.17.0.1`, the Docker bridge gateway (`extra_hosts` on the `api` service). Ollama refuses connections on that address because it binds to `127.0.0.1`. The bridge accepts the call on `172.17.0.1:11434` and forwards it to `127.0.0.1:11434`.
 

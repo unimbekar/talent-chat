@@ -1,3 +1,5 @@
+# Public site on one arm64 instance. Do not use this file on the Spark.
+# The Spark keeps docker-compose.yml, Ollama, and local résumé files.
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -15,14 +17,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
-
-  ollama-bridge:
-    image: talent-chat-api
-    network_mode: host
     restart: unless-stopped
-    entrypoint: ["/app/.venv/bin/python", "/bridge/ollama-bridge.py"]
-    volumes:
-      - ./scripts/ollama-bridge.py:/bridge/ollama-bridge.py:ro
 
   api:
     build:
@@ -41,13 +36,15 @@ services:
       ADMIN_PASSWORD_HASH_FILE: /run/secrets/admin_password_hash
       CRAWL_ON_START: ${CRAWL_ON_START:-true}
       LOCATIONS_FILE: /app/configs/locations.yaml
-      RESUME_FOLDER: /resumes
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      LLM_BACKEND: bedrock
+      LLM_MODEL: ${BEDROCK_MODEL:-amazon.nova-lite-v1:0}
+      AWS_REGION: us-east-1
+      S3_BUCKET: ${S3_BUCKET:?set S3_BUCKET}
+      SESSION_SECURE: "true"
+      TRUSTED_PROXY_HEADER: X-Forwarded-For
+      PUBLIC_FRAME_ANCESTOR: ${PUBLIC_FRAME_ANCESTOR:-https://www.janus-soft.com}
     volumes:
-      - uploads:/app/data/uploads
       - ./secrets/admin_password_hash:/run/secrets/admin_password_hash:ro
-      - ${RESUME_HOST_DIR:-/mnt/synology/janus-soft/Candidates}:/resumes:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,6 +60,7 @@ services:
       timeout: 5s
       retries: 30
       start_period: 20s
+    restart: unless-stopped
 
   web:
     build:
@@ -70,16 +68,34 @@ services:
       dockerfile: web/Dockerfile
       args:
         API_INTERNAL_URL: http://api:8000
-        PUBLIC_FRAME_ANCESTOR: ${PUBLIC_FRAME_ANCESTOR:-}
+        PUBLIC_FRAME_ANCESTOR: ${PUBLIC_FRAME_ANCESTOR:-https://www.janus-soft.com}
     platform: linux/arm64
-    ports:
-      - "${WEB_PORT:-3000}:3000"
     environment:
-      PUBLIC_FRAME_ANCESTOR: ${PUBLIC_FRAME_ANCESTOR:-}
+      PUBLIC_FRAME_ANCESTOR: ${PUBLIC_FRAME_ANCESTOR:-https://www.janus-soft.com}
     depends_on:
       api:
         condition: service_healthy
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    platform: linux/arm64
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?set PUBLIC_HOST}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - api
+    restart: unless-stopped
 
 volumes:
   pgdata:
-  uploads:
+  caddy_data:
+  caddy_config:

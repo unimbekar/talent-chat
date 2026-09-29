@@ -1,0 +1,10 @@
+{
+  "Rules": [
+    {
+      "ID": "expire-dumps-after-14-days",
+      "Filter": { "Prefix": "dumps/" },
+      "Status": "Enabled",
+      "Expiration": { "Days": 14 }
+    }
+  ]
+}

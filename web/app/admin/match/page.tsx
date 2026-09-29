@@ -24,13 +24,6 @@ type Profile = {
   citizenship: string | null;
   summary: string | null;
 };
-type SavedCandidate = {
-  id: string;
-  full_name: string | null;
-  email: string | null;
-  original_filename: string | null;
-  status: string;
-};
 type MatchRow = {
   requisition_code: string;
   title: string | null;
@@ -62,19 +55,10 @@ function MatchPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [requiredByJob, setRequiredByJob] = useState<Record<string, string>>({});
   const [matches, setMatches] = useState<MatchRow[]>([]);
-  const [saved, setSaved] = useState<SavedCandidate[]>([]);
   const [message, setMessage] = useState("");
-
-  async function loadSaved() {
-    const response = await fetch("/api/admin/resumes");
-    if (response.status === 401) {
-      router.push("/admin/login");
-      return;
-    }
-    if (!response.ok) return;
-    const data = await response.json();
-    setSaved(data.candidates || []);
-  }
+  const [ranking, setRanking] = useState(false);
+  const loadGeneration = useRef(0);
+  const candidateId = params.get("id") || "";
 
   async function openCandidate(id: string) {
     const response = await fetch(`/api/admin/resumes/${id}`);
@@ -91,23 +75,25 @@ function MatchPage() {
   }
 
   useEffect(() => {
-    loadSaved();
-  }, [router]);
-
-  useEffect(() => {
-    const id = params.get("id");
-    if (!id) return;
-    fetch(`/api/admin/resumes/${id}`).then(async (response) => {
+    if (!candidateId) return;
+    const generation = ++loadGeneration.current;
+    let cancelled = false;
+    fetch(`/api/admin/resumes/${candidateId}`).then(async (response) => {
+      if (cancelled || generation !== loadGeneration.current) return;
       if (response.status === 401) {
         router.push("/admin/login");
         return;
       }
       if (!response.ok) return;
       const data = await response.json();
+      if (cancelled || generation !== loadGeneration.current) return;
       setProfile(data.candidate);
       setMatches(data.matches || []);
     });
-  }, [params, router]);
+    return () => {
+      cancelled = true;
+    };
+  }, [candidateId]);
 
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -131,23 +117,35 @@ function MatchPage() {
     setMatches([]);
     setMessage("");
     router.replace(`/admin/match?id=${data.candidate.id}`);
-    loadSaved();
   }
 
   async function confirm() {
-    if (!profile) return;
-    const response = await fetch(`/api/admin/resumes/${profile.id}/confirm`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(profile),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      setMessage(data.detail || "Confirm failed.");
-      return;
+    if (!profile || ranking) return;
+    const generation = ++loadGeneration.current;
+    setRanking(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/admin/resumes/${profile.id}/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(profile),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (generation !== loadGeneration.current) return;
+      if (!response.ok) {
+        setMessage(data.detail || "Ranking did not finish. The candidate list is unchanged.");
+        return;
+      }
+      setMatches(data.matches || []);
+      setProfile(data.candidate);
+      setMessage(data.matches?.length ? "" : "Ranking finished. No open job is on file.");
+    } catch {
+      if (generation === loadGeneration.current) {
+        setMessage("Ranking did not finish. The candidate list is unchanged.");
+      }
+    } finally {
+      if (generation === loadGeneration.current) setRanking(false);
     }
-    setMatches(data.matches || []);
-    setProfile(data.candidate);
   }
 
   async function remove() {
@@ -157,7 +155,6 @@ function MatchPage() {
     setMatches([]);
     setMessage("");
     router.replace("/admin/match");
-    loadSaved();
   }
 
   const resumeNames = (profile?.skills || []).map((skill) => skill.name);
@@ -166,7 +163,12 @@ function MatchPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="font-serif text-2xl">Match a résumé</h1>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <h1 className="font-serif text-2xl">Match a résumé</h1>
+        <Link href="/admin/find" className="text-sm text-pine underline-offset-2 hover:underline">
+          Back to find
+        </Link>
+      </div>
       <form onSubmit={upload} className="flex flex-col gap-3 rounded-lg border border-line bg-card p-4 sm:flex-row sm:items-end">
         <label className="flex-1 text-sm">
           PDF, DOCX, or TXT
@@ -174,25 +176,6 @@ function MatchPage() {
         </label>
         <Button type="submit">Upload</Button>
       </form>
-      {saved.length > 0 && (
-        <section className="rounded-lg border border-line bg-card p-4">
-          <h2 className="font-serif text-lg">Résumés on file</h2>
-          <p className="mt-1 text-sm text-ink/70">Open a candidate, review the profile, then Confirm and rank.</p>
-          <ul className="mt-3 divide-y divide-line">
-            {saved.map((candidate) => (
-              <li key={candidate.id} className="flex items-center justify-between gap-3 py-2">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{candidate.full_name || "Unnamed résumé"}</p>
-                  <p className="truncate text-xs text-ink/60">{candidate.original_filename || candidate.email || "No file name"}</p>
-                </div>
-                <Button type="button" variant="outline" onClick={() => openCandidate(candidate.id)}>
-                  Open
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
       {message && <p className="text-sm">{message}</p>}
       {profile && (
         <Card>
@@ -240,8 +223,8 @@ function MatchPage() {
               A strong match covers at least 90% of every mandatory line. Any desired skill is a plus and does not lower the mandatory score.
             </p>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" onClick={confirm}>
-                Confirm and rank
+              <Button type="button" onClick={confirm} disabled={ranking}>
+                {ranking ? "Ranking…" : "Confirm and rank"}
               </Button>
               <Button type="button" variant="outline" onClick={remove}>
                 Delete

@@ -45,6 +45,8 @@ class Settings(BaseSettings):
 
     embedding_model: str = "nomic-ai/nomic-embed-text-v1.5"
     file_dir: str = "./data/uploads"
+    s3_bucket: str = ""
+    resume_folder: str = ""
     locations_file: str = ""
 
     def resolved_admin_hash(self) -> str:

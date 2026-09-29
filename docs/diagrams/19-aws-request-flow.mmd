@@ -1,0 +1,26 @@
+flowchart LR
+    browser["Browser"]
+
+    subgraph ec2["EC2 t4g.medium"]
+        direction TB
+        caddy["Caddy<br/>ports 80 and 443<br/>Let's Encrypt"]
+        web["web<br/>Next.js pages"]
+        api["api<br/>FastAPI<br/>FastEmbed inside"]
+        pg["postgres<br/>127.0.0.1:5432"]
+    end
+
+    careers["janus-soft.com<br/>/career and /jobs"]
+    bedrock["Bedrock<br/>Nova Lite us-east-1"]
+    originals["S3 originals/<br/>résumé files"]
+    dumps["S3 dumps/<br/>deleted after 14 days"]
+    secret["Secrets Manager<br/>passwords"]
+
+    browser -->|"https://host/chat<br/>and /admin"| caddy
+    caddy -->|"HTML"| web
+    caddy -->|"/api prefix removed<br/>X-Forwarded-For replaced"| api
+    api -->|"app_public or app_admin"| pg
+    api -->|"InvokeModel"| bedrock
+    api -->|"crawl every 6 h"| careers
+    api -->|"upload and delete"| originals
+    api -->|"07:00 UTC backup upload"| dumps
+    secret -->|"first boot writes .env"| ec2

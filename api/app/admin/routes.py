@@ -5,9 +5,10 @@ from pathlib import Path
 import hashlib
 import uuid
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import String, cast, func, or_, select
+from sqlalchemy.sql.expression import nullslast
 from sqlalchemy.orm import Session
 
 from app.admin.auth import (
@@ -20,6 +21,7 @@ from app.admin.auth import (
     verify_password,
 )
 from app.admin.candidate_repository import by_hash, delete_candidate, get_candidate
+from app.admin.folder_ingest import ingest_status, preferred_name, scan_resumes, start_ingest
 from app.admin.rank import _posting_lines, embed_candidate, rank_jobs
 from app.core.score import MANDATORY_BAR, covers_title, section_coverage
 from app.config import get_settings
@@ -27,6 +29,9 @@ from app.core.client_ip import client_ip
 from app.core.crawler import HttpFetcher, run_crawl
 from app.core.detail_parser import DetailParse
 from app.core.extract import ExtractError, extract_text
+from app.core.labor import categories_for_question, labor_categories
+from app.core.llm import LLMError
+from app.core.files import store_original
 from app.core.redact import redact_ssn
 from app.core.skills import normalize_skill_list
 from app.core.structure import skills_from_quotes
@@ -53,6 +58,10 @@ class JobEdit(BaseModel):
     needs_review: bool | None = None
     must_have_quotes: list[str] | None = None
     nice_to_have_quotes: list[str] | None = None
+
+
+class AskIn(BaseModel):
+    message: str
 
 
 class ConfirmIn(BaseModel):
@@ -336,6 +345,66 @@ def add_synonym(body: SynonymIn, session: Session = Depends(require_admin)):
     return {"alias": alias, "canonical": canonical}
 
 
+class _TextOnlyLLM:
+    """Folder import fills the profile from the file text and does not call the model."""
+
+    def complete(self, *, system: str, user: str, temperature: float, json_mode: bool) -> str:
+        raise LLMError("folder import reads the résumé text")
+
+
+def _store_resume(
+    session: Session,
+    filename: str,
+    data: bytes,
+    llm,
+    *,
+    refresh: bool = False,
+    extra_categories: list[str] | None = None,
+    email_hint: str | None = None,
+) -> dict:
+    digest = hashlib.sha256(data).hexdigest()
+    existing = by_hash(session, digest)
+    if existing is not None and not refresh:
+        _audit(session, "resume_upload", existing.id, "already_ingested")
+        session.commit()
+        return {"already_ingested": True, "candidate_id": str(existing.id), "message": "already ingested"}
+    try:
+        text = extract_text(filename or "resume.txt", data)
+    except ExtractError as exc:
+        _audit(session, "resume_upload", outcome="rejected")
+        session.commit()
+        raise HTTPException(status_code=400, detail=exc.message) from exc
+    redacted = redact_ssn(text)
+    path = store_original(data, digest)
+    profile = parse_resume_profile(redacted, llm)
+    if email_hint and _company_email(profile.get("email")):
+        profile["email"] = email_hint
+    categories = labor_categories(filename or "", redacted)
+    for label in extra_categories or []:
+        if label not in categories:
+            categories.append(label)
+    if categories:
+        profile["titles"] = categories[:4]
+    if existing is not None:
+        _fill_candidate(existing, digest, filename or "resume", str(path), redacted, profile, keep_status=True)
+        _audit(session, "resume_upload", existing.id, "refreshed")
+        session.commit()
+        return {"already_ingested": True, "refreshed": True, "candidate_id": str(existing.id)}
+    name = preferred_name(profile.get("full_name"), filename)
+    twin = _by_name(session, name) if refresh and name else None
+    if twin is not None:
+        _fill_candidate(twin, digest, filename or "resume", str(path), redacted, profile, keep_status=True)
+        _audit(session, "resume_upload", twin.id, "refreshed")
+        session.commit()
+        return {"already_ingested": True, "refreshed": True, "candidate_id": str(twin.id)}
+    candidate = _new_candidate(digest, filename or "resume", str(path), redacted, profile)
+    session.add(candidate)
+    session.flush()
+    _audit(session, "resume_upload", candidate.id, "accepted")
+    session.commit()
+    return {"already_ingested": False, "candidate": _candidate_out(candidate)}
+
+
 @router.post("/resumes")
 async def upload_resume(
     request: Request,
@@ -343,30 +412,62 @@ async def upload_resume(
     file: UploadFile = File(...),
 ):
     data = await file.read()
-    digest = hashlib.sha256(data).hexdigest()
-    existing = by_hash(session, digest)
-    if existing is not None:
-        _audit(session, "resume_upload", existing.id, "already_ingested")
-        session.commit()
-        return {"already_ingested": True, "candidate_id": str(existing.id), "message": "already ingested"}
-    try:
-        text = extract_text(file.filename or "resume.txt", data)
-    except ExtractError as exc:
-        _audit(session, "resume_upload", outcome="rejected")
-        session.commit()
-        raise HTTPException(status_code=400, detail=exc.message) from exc
-    redacted = redact_ssn(text)
-    directory = Path(get_settings().file_dir)
-    directory.mkdir(parents=True, exist_ok=True)
-    path = directory / digest
-    path.write_bytes(data)
-    profile = parse_resume_profile(redacted, request.app.state.llm)
-    candidate = _new_candidate(digest, file.filename or "resume", str(path), redacted, profile)
-    session.add(candidate)
-    session.flush()
-    _audit(session, "resume_upload", candidate.id, "accepted")
-    session.commit()
-    return {"already_ingested": False, "candidate": _candidate_out(candidate)}
+    return _store_resume(session, file.filename or "resume.txt", data, request.app.state.llm)
+
+
+def _resume_root() -> Path:
+    folder = get_settings().resume_folder.strip()
+    if not folder:
+        raise HTTPException(status_code=400, detail="No résumé folder is configured.")
+    root = Path(folder)
+    if not root.is_dir():
+        raise HTTPException(status_code=400, detail="The résumé folder is not available.")
+    return root
+
+
+@router.get("/ingest/scan")
+def ingest_scan(session: Session = Depends(require_admin)):
+    del session
+    scan = scan_resumes(_resume_root())
+    preview = [
+        {"label": item.label, "file": item.path.name, "older": len(item.older)}
+        for item in scan.chosen[:12]
+    ]
+    return {
+        "people": len(scan.chosen),
+        "older": scan.older,
+        "ignored": scan.ignored,
+        "preview": preview,
+    }
+
+
+@router.post("/ingest/start")
+def ingest_start(session: Session = Depends(require_admin)):
+    del session
+    root = _resume_root()
+
+    def save(path):
+        from app.db import admin_session
+
+        db = admin_session()
+        try:
+            try:
+                result = _store_resume(db, path.name, path.read_bytes(), _TextOnlyLLM(), refresh=True)
+            except HTTPException as exc:
+                raise RuntimeError(str(exc.detail)) from exc
+        finally:
+            db.close()
+        return "already" if result["already_ingested"] and not result.get("refreshed") else "imported"
+
+    if not start_ingest(root, save):
+        raise HTTPException(status_code=409, detail="An import is already running.")
+    return {"ok": True}
+
+
+@router.get("/ingest/status")
+def ingest_progress(session: Session = Depends(require_admin)):
+    del session
+    return ingest_status()
 
 
 @router.post("/resumes/{candidate_id}/confirm")
@@ -392,7 +493,11 @@ def confirm_resume(
         if isinstance(item, dict) and item.get("name"):
             years[str(item["name"]).lower()] = item.get("years")
     candidate.skills = [{"name": name, "years": years.get(name.lower())} for name in names]
-    candidate.titles = [title for title in body.titles if title.strip()]
+    submitted_titles = [title for title in body.titles if title and title.strip()]
+    if submitted_titles:
+        candidate.titles = submitted_titles
+    elif not candidate.titles:
+        candidate.titles = labor_categories(candidate.original_filename or "", candidate.redacted_text or "")
     candidate.clearance = body.clearance or None
     candidate.polygraph = body.polygraph or None
     candidate.citizenship = body.citizenship
@@ -427,21 +532,107 @@ def remove_resume(candidate_id: uuid.UUID, session: Session = Depends(require_ad
 
 
 @router.get("/resumes")
-def list_resumes(session: Session = Depends(require_admin)):
+def list_resumes(
+    session: Session = Depends(require_admin),
+    q: str = "",
+    category: str = "",
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=200),
+):
     from app.models import Candidate
 
-    rows = session.scalars(select(Candidate).order_by(Candidate.created_at.desc())).all()
+    stmt = select(Candidate)
+    term = q.strip()
+    if term:
+        pattern = f"%{term.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')}%"
+        stmt = stmt.where(
+            or_(
+                Candidate.full_name.ilike(pattern, escape="\\"),
+                Candidate.email.ilike(pattern, escape="\\"),
+                Candidate.original_filename.ilike(pattern, escape="\\"),
+                Candidate.location.ilike(pattern, escape="\\"),
+                cast(Candidate.skills, String).ilike(pattern, escape="\\"),
+                cast(Candidate.titles, String).ilike(pattern, escape="\\"),
+                Candidate.redacted_text.ilike(pattern, escape="\\"),
+            )
+        )
+    labels = categories_for_question(category) if category.strip() else []
+    if labels:
+        stmt = stmt.where(or_(*(cast(Candidate.titles, String).ilike(f"%{label}%") for label in labels)))
+    total = session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    rows = session.scalars(
+        stmt.order_by(nullslast(func.lower(Candidate.full_name)), Candidate.original_filename)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).all()
     return {
         "candidates": [
             {
                 "id": str(row.id),
                 "full_name": _person_name(row),
                 "email": row.email,
+                "location": row.location,
                 "original_filename": row.original_filename,
                 "status": row.status,
+                "titles": list(row.titles or []),
+                "skills": [
+                    item.get("name")
+                    for item in (row.skills or [])
+                    if isinstance(item, dict) and item.get("name")
+                ][:6],
             }
             for row in rows
-        ]
+        ],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+@router.post("/candidates/ask")
+def ask_candidates(body: AskIn, session: Session = Depends(require_admin)):
+    """Answer a recruiter question such as 'Show me all Software Testers.'"""
+    from app.models import Candidate
+
+    message = body.message.strip()
+    labels = categories_for_question(message)
+    stmt = select(Candidate)
+    if labels:
+        stmt = stmt.where(or_(*(cast(Candidate.titles, String).ilike(f"%{label}%") for label in labels)))
+    elif message:
+        pattern = f"%{message.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')}%"
+        stmt = stmt.where(
+            or_(
+                Candidate.full_name.ilike(pattern, escape="\\"),
+                cast(Candidate.skills, String).ilike(pattern, escape="\\"),
+                Candidate.redacted_text.ilike(pattern, escape="\\"),
+            )
+        )
+    rows = session.scalars(stmt.order_by(nullslast(func.lower(Candidate.full_name))).limit(200)).all()
+    if labels:
+        answer = f"{len(rows)} {'person' if len(rows) == 1 else 'people'} in {', '.join(labels)}."
+    elif message:
+        answer = f"{len(rows)} {'person' if len(rows) == 1 else 'people'} matched that search."
+    else:
+        answer = "Ask for a category, such as Software Testers or Cybersecurity Engineers."
+    return {
+        "answer": answer,
+        "categories": labels,
+        "candidates": [
+            {
+                "id": str(row.id),
+                "full_name": _person_name(row),
+                "email": row.email,
+                "location": row.location,
+                "titles": list(row.titles or []),
+                "skills": [
+                    item.get("name")
+                    for item in (row.skills or [])
+                    if isinstance(item, dict) and item.get("name")
+                ][:6],
+            }
+            for row in rows
+        ],
     }
 
 
@@ -456,6 +647,36 @@ def get_resume(candidate_id: uuid.UUID, session: Session = Depends(require_admin
     return {"candidate": _candidate_out(candidate), "matches": payload}
 
 
+def _company_email(email: str | None) -> bool:
+    text = (email or "").strip().lower()
+    return not text or text.endswith("@janus-soft.com")
+
+
+def _by_name(session: Session, name: str):
+    from app.models import Candidate
+
+    return session.scalar(select(Candidate).where(func.lower(Candidate.full_name) == name.lower()))
+
+
+def _fill_candidate(candidate, digest: str, filename: str, path: str, redacted: str, profile: dict, *, keep_status: bool) -> None:
+    candidate.file_sha256 = digest
+    candidate.original_filename = filename
+    candidate.original_path = path
+    candidate.full_name = preferred_name(profile.get("full_name"), filename)
+    candidate.email = profile.get("email") or candidate.email
+    candidate.phone = profile.get("phone") or candidate.phone
+    candidate.location = profile.get("location") or candidate.location
+    candidate.skills = profile.get("skills") or candidate.skills or []
+    candidate.titles = profile.get("titles") or []
+    candidate.clearance = profile.get("clearance") or candidate.clearance
+    candidate.polygraph = profile.get("polygraph") or candidate.polygraph
+    candidate.citizenship = profile.get("citizenship") or candidate.citizenship
+    candidate.summary = profile.get("summary") or candidate.summary
+    candidate.redacted_text = redacted
+    if not keep_status:
+        candidate.status = "pending_review"
+
+
 def _new_candidate(digest: str, filename: str, path: str, redacted: str, profile: dict):
     from app.models import Candidate
 
@@ -464,7 +685,7 @@ def _new_candidate(digest: str, filename: str, path: str, redacted: str, profile
         original_filename=filename,
         original_path=path,
         status="pending_review",
-        full_name=profile.get("full_name"),
+        full_name=preferred_name(profile.get("full_name"), filename),
         email=profile.get("email"),
         phone=profile.get("phone"),
         location=profile.get("location"),
@@ -554,16 +775,15 @@ def _tool_skills(candidate) -> list[dict]:
 
 def _person_name(candidate, facts: dict | None = None) -> str | None:
     stored = (candidate.full_name or "").strip()
-    if not stored or "clearance" not in stored.lower():
-        return stored or None
-    if facts is None:
+    if (not stored or "clearance" in stored.lower()) and facts is None:
         from app.core.structure import resume_facts
 
         facts = resume_facts(candidate.redacted_text or "")
-    parsed = (facts.get("full_name") or "").strip()
-    if parsed and "clearance" not in parsed.lower():
-        return parsed
-    return stored
+    if facts is not None:
+        parsed = (facts.get("full_name") or "").strip()
+        if parsed and "clearance" not in parsed.lower():
+            stored = parsed
+    return preferred_name(stored, candidate.original_filename)
 
 
 def _candidate_out(candidate) -> dict:
