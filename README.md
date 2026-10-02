@@ -4,7 +4,7 @@ This repository is the recruiting assistant for [Janus Soft Inc.](https://www.ja
 
 | File | What it is |
 | --- | --- |
-| [README.md](README.md) | How to run Phase 1, and how the recruiter screens score a résumé. |
+| [README.md](README.md) | How to run Phase 1, how Ingest reads a folder, and how the recruiter screens score a résumé. |
 | [SPEC.md](SPEC.md) | Product specification. Section 5 records both the stored rank score and the line coverage the recruiter sees. |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How the pieces fit, including the Review screen. |
 | [postgres.md](postgres.md) | Database setup: connect, read, purge, and troubleshoot `talent`. |
@@ -12,19 +12,41 @@ This repository is the recruiting assistant for [Janus Soft Inc.](https://www.ja
 | [workflow.md](workflow.md) | How `/chat` and `/admin` reach each API, and which container handles the call. |
 | [deploy.md](deploy.md) | Phase 1.5: the public instance, Bedrock, private S3, Caddy, and backup restore. |
 | [aws_deploy.md](aws_deploy.md) | AWS resources in the CloudFormation stack, and the request flow through them. |
+| [google_deploy.md](google_deploy.md) | Proposed Google Cloud design: Cloud Run, Cloud SQL, Vertex AI, and automatic résumé import from a Shared Drive. |
 | [PROMPT.md](PROMPT.md) | The original Phase 1 kickoff. The application is already in this repository. |
 | `docs/diagrams/` | Diagram sources (`.mmd`) and rendered PNGs. Re-render with `scripts/render-diagrams.sh`. |
 | `tests/fixtures/careers/` | Snapshot of the live listing and detail pages (2026-09-27), used as parser fixtures. |
 
 ## Recruiter desk
 
-Sign in at `/admin`. The header links are Jobs, Candidates, Find, Match, and Review. Find is described in [Find candidates](#find-candidates).
+Sign in at `/admin`. The header links are Jobs, Candidates, Ingest, Find, Match, and Review. Find is described in [Find candidates](#find-candidates). Ingest is described in [Ingest résumés](#ingest-résumés).
 
-- **Jobs.** Open postings from the careers crawl. A row that leaves the careers page is closed, not deleted, and listed under “No longer on the careers page.” Each job page shows the full description, the mandatory and desired lines from the posting, and résumés that cover at least 50% of the mandatory lines.
-- **Match.** Upload a PDF, DOCX, or TXT, or open a résumé already on file. Skills on the profile are tools and languages. Confirming ranks the résumé against open jobs. A card appears only when mandatory coverage is at least 50%. A strong match is at least 90%. Desired coverage is a separate percent and does not lower the mandatory score.
-- **Review.** Pick one job and one résumé. The screen shows the mandatory and desired percents, the posting lines the résumé covers, and the lines it is still missing.
+- **Jobs.** Open postings from the careers crawl. Each job page shows the full description, the mandatory and desired lines from the posting, and résumés that cover at least 50% of the mandatory lines. Each matching candidate shows an email and a location, or “unknown” when either is missing. Check the people you want, then copy their addresses as a comma-separated list. Nothing is sent. Close a job with a note that explains why. Closed jobs stay closed when the careers page is crawled again, and the note stays with the job so you can read it later. Reopen puts the job back on the open list. A posting that disappears from the careers page is closed with the note “No longer listed on the careers page.”
+- **Candidates.** The newest résumé on file for each person, with search and pages. Each row shows email and location, or “unknown”. Copy the addresses on the current page, copy every address in the desk as one comma-separated list, or check a few people and copy only those. Duplicate addresses are left out. Nothing is sent.
+- **Ingest.** Point at a folder and import every résumé in it. See [Ingest résumés](#ingest-résumés).
+- **Match.** Upload a PDF, DOC, DOCX, or TXT, or open a résumé already on file. An empty file, a wrong type, or a file with almost no text shows a colored message. While the résumé is ranking, a progress bar stays on the page. Skills on the profile are tools and languages. Confirming ranks the résumé against open jobs. A card appears only when mandatory coverage is at least 50%. A strong match is at least 90%. Desired coverage is a separate percent and does not lower the mandatory score.
+- **Review.** Pick one job and one résumé. The screen shows the mandatory and desired percents, the posting lines the résumé covers, and the lines it is still missing. When the résumé’s role and the job’s role do not overlap, the screen says so and shared wording is not counted.
 
-A tool named in the job title has to be on the résumé. A Salesforce Developer posting does not list a résumé that never names Salesforce.
+A tool named in the job title has to be on the résumé. A Salesforce Developer posting does not list a résumé that never names Salesforce. A cybersecurity résumé is not listed against a Data Scientist job on the strength of generic words such as analysis or systems.
+
+## Ingest résumés
+
+`/admin/ingest` reads a folder on the résumé library. The default folder is `/mnt/synology/janus-soft/Candidates`, mounted read-only at `/resumes`. The rest of `/mnt/synology/janus-soft` is mounted read-only at `/library`, so a path such as `/mnt/synology/janus-soft/Resume-Refined` or a short name such as `Upender` also works. A path outside that library is refused.
+
+Check the folder first. The page reports how many people it found, how many older copies it will skip, and how many other files it will ignore. Then start the import.
+
+The import keeps one résumé per person:
+
+- It reads PDF, DOC, DOCX, and TXT, up to 10 MB. Word 97 `.doc` files are read with `antiword`. A `.doc` that is really a DOCX is read as DOCX.
+- The newest file wins. When two files share a timestamp, PDF ranks above DOCX, then DOC, then TXT.
+- Another spelling of the same person in that person’s folder, including `JCordoba.doc` and `JCordoba_December2022.doc`, stays one record. A folder that holds several different people, such as `Non-FSP`, keeps them separate.
+- Offer letters, invoices, salary sheets, and lock files (`~$…`) stay out.
+
+While the import runs, the progress bar shows the percent and the résumé it is reading, with the person’s name under the file. When it finishes, that file remains as the last résumé read. Imported, already on file, and unparsed counts sit under the bar.
+
+**Unparsed résumés** lists each file that could not be read, once, with the reason. A scanned image or a corrupt Word file lands here. Save it as a text-based PDF or DOCX and import that folder again. The same person is updated in place, so a second import does not add a second candidate.
+
+The Candidates page can start an import of the default folder. It uses the same progress bar and the same Unparsed résumés list. Nothing is emailed.
 
 ## Find candidates
 

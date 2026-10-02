@@ -11,7 +11,7 @@ import re
 # Canonical name, then phrases that identify it in a résumé or a question.
 _CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Software Tester", ("software tester", "qa tester", "qa engineer", "quality assurance", "test engineer", "senior tester")),
-    ("CyberSecurity Engineer", ("cybersecurity engineer", "cyber security engineer", "security engineer", "cyber threat", "information security")),
+    ("CyberSecurity Engineer", ("cybersecurity engineer", "cyber security engineer", "cybersecurity", "cyber security", "security engineer", "security analyst", "cyber threat", "information security", "penetration testing")),
     ("DevOps Engineer", ("devops engineer", "dev ops engineer", "site reliability")),
     ("Cloud Engineer", ("cloud engineer", "cloud developer")),
     ("Data Scientist", ("data scientist", "data engineer", "machine learning engineer")),
@@ -59,6 +59,43 @@ def labor_categories(filename: str, text: str) -> list[str]:
 def categories_for_question(message: str) -> list[str]:
     """Map a recruiter question onto labor categories."""
     return sorted(_match(message or ""), key=_order)
+
+
+# Roles in one family can be scored against each other. A cybersecurity
+# résumé is not scored as a data-scientist match.
+_FAMILY = {
+    "Data Scientist": "analytics",
+    "AI Engineer": "analytics",
+    "Software Engineer": "software",
+    "Software Architect": "software",
+    "Web Developer": "software",
+    "Cloud Engineer": "platform",
+    "DevOps Engineer": "platform",
+    "Systems Engineer": "systems",
+    "Systems Admin": "systems",
+    "Systems Analyst": "systems",
+}
+
+
+def candidate_roles(filename: str, text: str, titles: list[str] | None = None) -> list[str]:
+    """Every labor category named by the file, the opening, or the saved titles."""
+    header = (text or "")[:700]
+    hits = _match(filename or "") | _match(header)
+    for title in titles or []:
+        hits |= _match(title)
+    return sorted(hits, key=_order)
+
+
+def role_conflict(filename: str, text: str, titles: list[str] | None, job_title: str | None) -> list[str]:
+    """Job roles when this résumé belongs to a different family. Empty when scoring can proceed."""
+    job_roles = categories_for_question(job_title or "")
+    roles = candidate_roles(filename, text, titles)
+    if not job_roles or not roles:
+        return []
+    job_families = {_FAMILY.get(role, role) for role in job_roles}
+    if any(_FAMILY.get(role, role) in job_families for role in roles):
+        return []
+    return job_roles
 
 
 def _match(text: str) -> set[str]:

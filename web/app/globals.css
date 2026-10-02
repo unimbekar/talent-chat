@@ -11,3 +11,12 @@ body {
 body {
   overflow-x: hidden;
 }
+
+@keyframes work-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}

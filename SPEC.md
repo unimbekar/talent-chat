@@ -170,7 +170,7 @@ Description structuring, once per change:
 
 ## 4. Résumé ingest (admin upload in Phase 1, Drive in Phase 2)
 
-Accepted types in Phase 1: PDF, DOCX, TXT, up to 10 MB. Legacy `.doc` is rejected with the message “Save as DOCX or PDF and upload again” until a later phase adds `antiword` to the image. Also reject images, scanned PDFs with no text layer, and password-protected files, each with a clear message. **A résumé is never rejected because of clearance or classification wording** (section 2).
+Accepted types: PDF, DOC, DOCX, TXT, up to 10 MB. Word 97 `.doc` files are read with antiword. A file that still cannot be read is listed once under Unparsed résumés. Also reject images, scanned PDFs with no text layer, and password-protected files, each with a clear message. **A résumé is never rejected because of clearance or classification wording** (section 2).
 
 Pipeline, same for upload and later Drive sync:
 

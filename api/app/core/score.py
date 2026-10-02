@@ -112,6 +112,60 @@ _LINE_FILLER = frozenset(
         "working",
         "year",
         "years",
+        "algorithm",
+        "algorithms",
+        "analysi",
+        "analysis",
+        "analytical",
+        "build",
+        "building",
+        "capabiliti",
+        "capabilities",
+        "capability",
+        "complex",
+        "conduct",
+        "conducting",
+        "coordination",
+        "creation",
+        "current",
+        "customer",
+        "data",
+        "detection",
+        "documentation",
+        "engineer",
+        "engineering",
+        "evaluat",
+        "evaluate",
+        "evaluating",
+        "evaluation",
+        "hands-on",
+        "in-depth",
+        "infrastructure",
+        "integration",
+        "leverage",
+        "leveraging",
+        "new",
+        "next-generation",
+        "practical",
+        "provid",
+        "provide",
+        "providing",
+        "record",
+        "scal",
+        "scale",
+        "scaling",
+        "servic",
+        "service",
+        "services",
+        "system",
+        "systems",
+        "techniqu",
+        "technique",
+        "techniques",
+        "track",
+        "verification",
+        "workflow",
+        "workflows",
     }
 )
 
@@ -153,17 +207,34 @@ _DEGREE_GENERIC = frozenset(
 
 
 def _prose_matches(line: str, resume_text: str) -> bool:
-    """A duty line with no named tool matches when the résumé uses the same work words."""
+    """A duty line with no named tool matches when the résumé uses that line's subject words.
+
+    Shared verbs such as analysis, detection, and systems do not cover a line.
+    A deepfake line needs deepfake. A multimedia-forensics line needs those subjects.
+    """
     needed = _stems(line)
     if not needed or not resume_text:
         return False
     overlap = needed & _stems(resume_text)
     specific = needed - _DEGREE_GENERIC
-    if specific and not (overlap & specific):
+    target = specific or needed
+    hit = overlap & target
+    if not hit:
         return False
-    if len(needed) == 1:
-        return len(overlap) == 1
-    return len(overlap) >= 2 and len(overlap) / len(needed) >= 0.5
+    if len(target) <= 2:
+        return hit == target
+    return len(hit) >= 2 and len(hit) / len(target) >= 0.6
+
+
+def block_coverage(coverage: dict) -> dict:
+    """Drop a line score when the résumé cannot be this job."""
+    return {
+        **coverage,
+        "pct": 0.0,
+        "hit": 0,
+        "matched": [],
+        "missing": list(coverage.get("matched") or []) + list(coverage.get("missing") or []),
+    }
 
 
 def _required_tools(line: str, tools: list[str]) -> list[str]:
@@ -203,6 +274,23 @@ def _search_cluster(line: str, resume_text: str, candidate_skills: set[str]) -> 
         r"(?i)(elasticsearch|solr).{0,60}cluster|cluster.{0,60}(elasticsearch|solr)",
         resume_text or "",
     ) is not None
+
+
+def gate_mandatory(
+    coverage: dict,
+    *,
+    skills: set[str],
+    job_title: str | None,
+    filename: str,
+    text: str,
+    titles: list[str] | None,
+) -> dict:
+    """Zero the line score when a title tool is missing or the résumé is a different role."""
+    from app.core.labor import role_conflict
+
+    if not covers_title(skills, job_title) or role_conflict(filename, text, titles, job_title):
+        return block_coverage(coverage)
+    return coverage
 
 
 def covers_title(candidate_skills: set[str], title: str | None) -> bool:

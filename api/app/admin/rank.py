@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.embed import Embedder, cosine
 from app.core.llm import LLMClient
-from app.core.score import MANDATORY_BAR, covers_title, rank_pair, required_coverage, section_coverage
+from app.core.score import MANDATORY_BAR, gate_mandatory, rank_pair, required_coverage, section_coverage
 from app.core.tokens import candidate_vector_text, chunk_text
 from app.models import Candidate, CandidateChunk, Job, Match
 
@@ -62,8 +62,14 @@ def rank_jobs(
         nice_lines = _posting_lines(job, "nice", list(job.nice_to_have_skills or []))
         mandatory = section_coverage(names, must_lines, candidate.redacted_text or "")
         desired = section_coverage(names, nice_lines, candidate.redacted_text or "")
-        if not covers_title(names, job.title):
-            mandatory = {**mandatory, "pct": 0.0, "hit": 0, "matched": []}
+        mandatory = gate_mandatory(
+            mandatory,
+            skills=names,
+            job_title=job.title,
+            filename=candidate.original_filename or "",
+            text=candidate.redacted_text or "",
+            titles=list(candidate.titles or []),
+        )
         required = required_coverage(names, must_lines, required_skills or [])
         mandatory_pct = mandatory["pct"]
         meets_bar = mandatory_pct is not None and mandatory_pct >= MANDATORY_BAR and not required["missing"]

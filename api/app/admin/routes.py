@@ -6,7 +6,7 @@ import hashlib
 import logging
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.sql.expression import nullslast
@@ -23,9 +23,9 @@ from app.admin.auth import (
 )
 from app.admin.candidate_repository import by_hash, delete_candidate, get_candidate
 from app.admin.find import describe, find_candidates
-from app.admin.folder_ingest import ingest_status, preferred_name, scan_resumes, start_ingest
+from app.admin.folder_ingest import ingest_status, library_folder, preferred_name, scan_resumes, start_ingest
 from app.admin.rank import _posting_lines, embed_candidate, rank_jobs
-from app.core.score import MANDATORY_BAR, covers_title, section_coverage
+from app.core.score import MANDATORY_BAR, gate_mandatory, section_coverage
 from app.config import get_settings
 from app.core.client_ip import client_ip
 from app.core.crawler import HttpFetcher, run_crawl
@@ -175,14 +175,22 @@ def job_candidates(code: str, session: Session = Depends(require_admin)):
         text = candidate.redacted_text or ""
         mandatory = section_coverage(names, must_lines, text)
         desired = section_coverage(names, nice_lines, text)
-        if not covers_title(names, job.title):
-            mandatory = {**mandatory, "pct": 0.0, "hit": 0, "matched": []}
+        mandatory = gate_mandatory(
+            mandatory,
+            skills=names,
+            job_title=job.title,
+            filename=candidate.original_filename or "",
+            text=text,
+            titles=list(candidate.titles or []),
+        )
         mandatory_pct = mandatory["pct"]
         ranked.append(
             {
                 "id": str(candidate.id),
                 "full_name": display_name or candidate.full_name,
                 "original_filename": candidate.original_filename,
+                "email": candidate.email,
+                "location": candidate.location,
                 "mandatory_pct": mandatory_pct,
                 "mandatory_hit": mandatory["hit"],
                 "mandatory_total": mandatory["total"],
@@ -206,6 +214,37 @@ def job_candidates(code: str, session: Session = Depends(require_admin)):
     return {"candidates": ranked}
 
 
+class CloseJobIn(BaseModel):
+    note: str
+
+
+@router.post("/jobs/{code}/close")
+def close_job(code: str, body: CloseJobIn, session: Session = Depends(require_admin)):
+    job = session.scalar(select(Job).where(Job.requisition_code == code))
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    note = body.note.strip()
+    if not note:
+        raise HTTPException(status_code=400, detail="Add a short note about why this job is closed.")
+    job.status = "closed"
+    job.close_note = note
+    job.closed_manually = True
+    session.commit()
+    return _job_out(job)
+
+
+@router.post("/jobs/{code}/reopen")
+def reopen_job(code: str, session: Session = Depends(require_admin)):
+    job = session.scalar(select(Job).where(Job.requisition_code == code))
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    job.status = "open"
+    job.closed_manually = False
+    job.close_note = None
+    session.commit()
+    return _job_out(job)
+
+
 @router.get("/review")
 def review_pair(code: str, candidate_id: uuid.UUID, session: Session = Depends(require_admin)):
     from app.core.skills import tools_and_languages
@@ -227,8 +266,19 @@ def review_pair(code: str, candidate_id: uuid.UUID, session: Session = Depends(r
     nice_lines = _posting_lines(job, "nice", list(job.nice_to_have_skills or []))
     mandatory = section_coverage(names, must_lines, text)
     desired = section_coverage(names, nice_lines, text)
+    from app.core.labor import candidate_roles, role_conflict
+
     have = {name.lower() for name in names}
     title_missing = [tool for tool in tools_and_languages(job.title or "") if tool.lower() not in have]
+    role_missing = role_conflict(candidate.original_filename or "", text, list(candidate.titles or []), job.title)
+    mandatory = gate_mandatory(
+        mandatory,
+        skills=names,
+        job_title=job.title,
+        filename=candidate.original_filename or "",
+        text=text,
+        titles=list(candidate.titles or []),
+    )
     mandatory_pct = mandatory["pct"]
     return {
         "job": {"requisition_code": job.requisition_code, "title": job.title, "location": job.location},
@@ -236,6 +286,8 @@ def review_pair(code: str, candidate_id: uuid.UUID, session: Session = Depends(r
             "id": str(candidate.id),
             "full_name": _person_name(candidate, facts),
             "original_filename": candidate.original_filename,
+            "email": candidate.email,
+            "location": candidate.location,
         },
         "mandatory_pct": mandatory_pct,
         "mandatory_hit": mandatory["hit"],
@@ -243,8 +295,10 @@ def review_pair(code: str, candidate_id: uuid.UUID, session: Session = Depends(r
         "desired_pct": desired["pct"],
         "desired_hit": desired["hit"],
         "desired_total": desired["total"],
-        "meets_bar": mandatory_pct is not None and mandatory_pct >= MANDATORY_BAR and not title_missing,
+        "meets_bar": mandatory_pct is not None and mandatory_pct >= MANDATORY_BAR and not title_missing and not role_missing,
         "title_missing": title_missing,
+        "role_missing": role_missing,
+        "candidate_roles": candidate_roles(candidate.original_filename or "", text, list(candidate.titles or [])),
         "mandatory_matched": mandatory["matched"],
         "mandatory_missing": mandatory["missing"],
         "desired_matched": desired["matched"],
@@ -441,28 +495,28 @@ async def upload_resume(
     file: UploadFile = File(...),
 ):
     data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="That file is empty. Choose a PDF, DOC, DOCX, or TXT résumé.")
     return _store_resume(session, file.filename or "resume.txt", data, request.app.state.llm)
 
 
-def _resume_root() -> Path:
+def _resume_root(path: str = "") -> Path:
     folder = get_settings().resume_folder.strip()
-    if not folder:
-        raise HTTPException(status_code=400, detail="No résumé folder is configured.")
-    root = Path(folder)
-    if not root.is_dir():
-        raise HTTPException(status_code=400, detail="The résumé folder is not available.")
-    return root
+    default = Path(folder) if folder else Path("/resumes")
+    try:
+        return library_folder(path, default=default)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.get("/ingest/scan")
-def ingest_scan(session: Session = Depends(require_admin)):
-    del session
-    scan = scan_resumes(_resume_root())
+def _scan_out(root: Path) -> dict:
+    scan = scan_resumes(root)
     preview = [
         {"label": item.label, "file": item.path.name, "older": len(item.older)}
         for item in scan.chosen[:12]
     ]
     return {
+        "folder": str(root),
         "people": len(scan.chosen),
         "older": scan.older,
         "ignored": scan.ignored,
@@ -470,10 +524,20 @@ def ingest_scan(session: Session = Depends(require_admin)):
     }
 
 
-@router.post("/ingest/start")
-def ingest_start(session: Session = Depends(require_admin)):
+@router.get("/ingest/scan")
+def ingest_scan(path: str = "", session: Session = Depends(require_admin)):
     del session
-    root = _resume_root()
+    return _scan_out(_resume_root(path))
+
+
+class IngestStartIn(BaseModel):
+    path: str = ""
+
+
+@router.post("/ingest/start")
+def ingest_start(body: IngestStartIn | None = Body(default=None), session: Session = Depends(require_admin)):
+    del session
+    root = _resume_root(body.path if body else "")
 
     def save(path):
         from app.db import admin_session
@@ -616,6 +680,22 @@ def list_resumes(
         "page": page,
         "page_size": page_size,
     }
+
+
+@router.get("/candidates/emails")
+def all_candidate_emails(session: Session = Depends(require_admin)):
+    """Every distinct candidate email, ignoring the Candidates page size."""
+    from app.models import Candidate
+
+    rows = session.scalars(select(Candidate.email)).all()
+    unique: dict[str, str] = {}
+    for raw in rows:
+        text = (raw or "").strip()
+        if "@" not in text:
+            continue
+        unique.setdefault(text.lower(), text.lower())
+    emails = [unique[key] for key in sorted(unique)]
+    return {"count": len(emails), "emails": ", ".join(emails)}
 
 
 @router.post("/candidates/ask")
@@ -784,6 +864,8 @@ def _job_out(job: Job) -> dict:
         "title": job.title,
         "location": job.location,
         "status": job.status,
+        "close_note": job.close_note,
+        "closed_manually": bool(job.closed_manually),
         "program_tag": job.program_tag,
         "external_req": job.external_req,
         "needs_review": job.needs_review,
@@ -875,8 +957,15 @@ def _stored_coverage(session: Session, row: Match, job: Job | None, required_ski
     nice_lines = [] if job is None else _posting_lines(job, "nice", list(job.nice_to_have_skills or []))
     mandatory = section_coverage(names, must_lines, text)
     desired = section_coverage(names, nice_lines, text)
-    if job is not None and not covers_title(names, job.title):
-        mandatory = {**mandatory, "pct": 0.0, "hit": 0, "matched": []}
+    if job is not None and candidate is not None:
+        mandatory = gate_mandatory(
+            mandatory,
+            skills=names,
+            job_title=job.title,
+            filename=candidate.original_filename or "",
+            text=text,
+            titles=list(candidate.titles or []),
+        )
     required = required_coverage(names, must_lines, required_skills)
     mandatory_pct = mandatory["pct"]
     return {

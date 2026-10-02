@@ -34,7 +34,7 @@ def _sibling_email(folder: Path, item) -> str | None:
 
 
 def _read_resume(path: Path) -> str:
-    if path.suffix.lower() not in {".pdf", ".docx", ".txt"}:
+    if path.suffix.lower() not in {".pdf", ".doc", ".docx", ".txt"}:
         return ""
     try:
         return extract_text(path.name, path.read_bytes())
@@ -47,7 +47,7 @@ def _sibling_categories(folder: Path, item) -> list[str]:
     found: list[str] = []
     for relative in item.older:
         path = folder / relative
-        if path.suffix.lower() not in {".pdf", ".docx", ".txt"}:
+        if path.suffix.lower() not in {".pdf", ".doc", ".docx", ".txt"}:
             continue
         text = _read_resume(path)
         for label in labor_categories(path.name, text):

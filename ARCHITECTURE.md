@@ -155,7 +155,7 @@ The DGX Spark (Grace) and the AWS Graviton instance are both arm64, so one set o
 | LLM client | One interface: `openai_compat` in Phase 1 (DGX), `bedrock` Converse in Phase 1.5. Strips think blocks and fences, 30 s timeout, one retry. | 2 |
 | Public boundary | `app_public` DB role + import-boundary test + SQL-log test. | 10, 11 |
 | SSN | Redacted before DB, logs, LLM request, and embedding. | 2, 4 |
-| File types | Phase 1: PDF, DOCX, TXT up to 10 MB. `.doc` gets a clear “save as DOCX or PDF” message. | 4 |
+| File types | PDF, DOC, DOCX, TXT up to 10 MB. `.doc` is read with antiword. A file that still cannot be read is listed under Unparsed résumés. | 4 |
 | Synonyms | One alias to many canonicals; word-boundary matching; clearance phrases are never skills. Kubernetes and Docker are their own canonicals, not DevOps. CI/CD still maps to DevOps. | 6 |
 | Recruiter coverage | Mandatory and desired percents are shares of posting lines. Floor 50%, strong match 90%. Title tools are required. Stored `final` remains the section 5 blend. | 5, 8 |
 | Chat state | Stateless server; client sends `prior_codes[]`. | 7 |

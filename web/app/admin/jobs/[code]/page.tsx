@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CandidateMailBar, copyText, selectedEmails, shown } from "@/components/candidate-mail";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -13,6 +14,8 @@ type JobCandidate = {
   id: string;
   full_name: string | null;
   original_filename: string | null;
+  email: string | null;
+  location: string | null;
   mandatory_pct: number | null;
   mandatory_hit: number;
   mandatory_total: number;
@@ -27,6 +30,7 @@ type JobDetail = {
   title: string | null;
   location: string | null;
   status: string;
+  close_note: string | null;
   description_source: string;
   description_text: string | null;
   description_note: string | null;
@@ -54,6 +58,11 @@ export default function JobDetailPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [candidates, setCandidates] = useState<JobCandidate[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [copiedSel, setCopiedSel] = useState(false);
+  const [copyNote, setCopyNote] = useState("");
+  const [closeNote, setCloseNote] = useState("");
+  const [closing, setClosing] = useState(false);
 
   useEffect(() => {
     fetch(`/api/admin/jobs/${code}`).then(async (response) => {
@@ -79,6 +88,82 @@ export default function JobDetailPage() {
       setCandidates(data.candidates || []);
     });
   }, [code, router]);
+
+  function toggle(id: string) {
+    setCopiedSel(false);
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setCopiedSel(false);
+    setSelected(candidates.every((candidate) => selected.has(candidate.id)) ? new Set() : new Set(candidates.map((candidate) => candidate.id)));
+  }
+
+  function copySelected() {
+    const list = selectedEmails(candidates, selected);
+    const missing = candidates.filter((candidate) => selected.has(candidate.id) && !(candidate.email || "").includes("@")).length;
+    setCopyNote(missing ? `${missing} selected ${missing === 1 ? "résumé has" : "résumés have"} no email, so ${missing === 1 ? "it was" : "they were"} left out.` : "");
+    if (!list) return;
+    copyText(list);
+    setCopiedSel(true);
+  }
+
+  async function reopenJob() {
+    setClosing(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/admin/jobs/${code}/reopen`, { method: "POST" });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) {
+        router.push("/admin/login");
+        return;
+      }
+      if (!response.ok) {
+        setMessage(data.detail || "The job was not reopened.");
+        return;
+      }
+      setJob(data);
+      setMessage("Open again.");
+    } catch {
+      setMessage("The job was not reopened.");
+    } finally {
+      setClosing(false);
+    }
+  }
+
+  async function closeJob(event: FormEvent) {
+    event.preventDefault();
+    setClosing(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/admin/jobs/${code}/close`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note: closeNote }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) {
+        router.push("/admin/login");
+        return;
+      }
+      if (!response.ok) {
+        setMessage(data.detail || "The job was not closed.");
+        return;
+      }
+      setJob(data);
+      setCloseNote("");
+      setMessage("Closed. It is listed with the other closed jobs.");
+    } catch {
+      setMessage("The job was not closed.");
+    } finally {
+      setClosing(false);
+    }
+  }
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -148,17 +233,59 @@ export default function JobDetailPage() {
         {job.needs_review && <Badge>Needs review</Badge>}
       </div>
 
+      {job.status !== "closed" ? (
+        <form onSubmit={closeJob} className="rounded-xl border border-line bg-card p-4">
+          <h2 className="font-serif text-xl">Close this job</h2>
+          <p className="mt-1 text-sm text-ink/70">It moves to the closed list on the jobs page. A later recrawl will not open it again.</p>
+          <label className="mt-3 block text-sm">
+            Why is it closing?
+            <Textarea value={closeNote} onChange={(event) => setCloseNote(event.target.value)} rows={3} className="mt-1" required />
+          </label>
+          <Button type="submit" className="mt-3" disabled={closing}>
+            {closing ? "Closing…" : "Close job"}
+          </Button>
+        </form>
+      ) : (
+        <section className="rounded-xl border border-line bg-card p-4">
+          <h2 className="font-serif text-xl">Closed</h2>
+          <p className="mt-2 text-sm leading-6">{job.close_note || "No note was saved."}</p>
+          <Button type="button" variant="outline" className="mt-3" disabled={closing} onClick={reopenJob}>
+            {closing ? "Reopening…" : "Reopen job"}
+          </Button>
+        </section>
+      )}
+
       <section id="candidates" className="scroll-mt-6 rounded-xl border border-line bg-card p-4">
         <h2 className="font-serif text-xl">Matching candidates</h2>
         <p className="mt-1 text-sm text-ink/70">Résumés that cover at least 50% of the mandatory lines. A strong match covers at least 90%.</p>
+        <CandidateMailBar
+          total={candidates.length}
+          selectedCount={selected.size}
+          allSelected={candidates.length > 0 && candidates.every((candidate) => selected.has(candidate.id))}
+          onToggleAll={toggleAll}
+          onCopy={copySelected}
+          copied={copiedSel}
+          note={copyNote}
+        />
         <div className="mt-3 flex flex-col gap-2">
           {candidates.length === 0 && <p className="text-sm text-ink/60">No résumé covers at least 50% of the mandatory lines.</p>}
           {candidates.map((candidate) => (
             <article key={candidate.id} className={`rounded-lg border px-3 py-3 ${candidate.meets_bar ? "border-pine" : "border-line"}`}>
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{candidate.full_name || "Unnamed résumé"}</p>
-                  <p className="truncate text-xs text-ink/60">{candidate.original_filename || "No file name"}</p>
+                <div className="flex min-w-0 items-start gap-3">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    aria-label={`Select ${candidate.full_name || "candidate"}`}
+                    checked={selected.has(candidate.id)}
+                    onChange={() => toggle(candidate.id)}
+                  />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{candidate.full_name || "Unnamed résumé"}</p>
+                    <p className="truncate text-xs text-ink/60">{candidate.original_filename || "No file name"}</p>
+                    <p className="mt-1 text-xs text-ink/80">Email: {shown(candidate.email)}</p>
+                    <p className="text-xs text-ink/80">Location: {shown(candidate.location)}</p>
+                  </div>
                 </div>
                 <div className="flex gap-3 text-sm">
                   <Link href={`/admin/review?job=${job.requisition_code}&candidate=${candidate.id}`} className="text-pine hover:underline">

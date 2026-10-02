@@ -144,7 +144,10 @@ def run_crawl(
         job.location = row.location
         job.program_tag = row.program_tag
         job.external_req = row.external_req
-        job.status = row.status
+        if not job.closed_manually:
+            job.status = row.status
+            if job.status != "closed":
+                job.close_note = None
         job.source_line = row.source_line
         job.site_job_id = row.site_job_id
         job.source_url = row.source_url
@@ -201,6 +204,8 @@ def run_crawl(
     for job in session.scalars(select(Job)).all():
         if job.requisition_code not in seen and job.status != "closed":
             job.status = "closed"
+            if not (job.close_note or "").strip():
+                job.close_note = "No longer listed on the careers page."
     state.last_ok = True
     state.last_error = None
     state.last_rows = len(rows)

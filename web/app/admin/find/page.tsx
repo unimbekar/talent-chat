@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
+import { CandidateMailBar, copyText, selectedEmails, shown } from "@/components/candidate-mail";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -56,6 +57,8 @@ export default function FindPage() {
   const [error, setError] = useState("");
   const [result, setResult] = useState<Answer | null>(null);
   const [copied, setCopied] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [copyNote, setCopyNote] = useState("");
   const [restored, setRestored] = useState(false);
 
   useEffect(() => {
@@ -106,16 +109,8 @@ export default function FindPage() {
     }
   }
 
-  function copyText(value: string, label: string) {
-    const area = document.createElement("textarea");
-    area.value = value;
-    document.body.appendChild(area);
-    area.select();
-    document.execCommand("copy");
-    area.remove();
-    if (navigator.clipboard?.writeText) {
-      void navigator.clipboard.writeText(value).catch(() => undefined);
-    }
+  function copyLabeled(value: string, label: string) {
+    copyText(value);
     setCopied(label);
   }
 
@@ -146,11 +141,33 @@ export default function FindPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm">{result.answer}</p>
             {emails.length > 0 && (
-              <Button type="button" variant="outline" onClick={() => copyText(emails.join("\n"), "all")}>
+              <Button type="button" variant="outline" onClick={() => copyLabeled(emails.join("\n"), "all")}>
                 {copied === "all" ? "Copied" : "Copy all emails"}
               </Button>
             )}
           </div>
+          <CandidateMailBar
+            total={result.candidates.length}
+            selectedCount={result.candidates.filter((person) => selected.has(person.id)).length}
+            allSelected={result.candidates.length > 0 && result.candidates.every((person) => selected.has(person.id))}
+            onToggleAll={() => {
+              setCopied("");
+              setSelected(
+                result.candidates.every((person) => selected.has(person.id))
+                  ? new Set()
+                  : new Set(result.candidates.map((person) => person.id)),
+              );
+            }}
+            onCopy={() => {
+              const list = selectedEmails(result.candidates, selected);
+              const missing = result.candidates.filter((person) => selected.has(person.id) && !(person.email || "").includes("@")).length;
+              setCopyNote(missing ? `${missing} selected ${missing === 1 ? "candidate has" : "candidates have"} no email, so ${missing === 1 ? "that address was" : "those addresses were"} left out.` : "");
+              if (!list) return;
+              copyLabeled(list, "selected");
+            }}
+            copied={copied === "selected"}
+            note={copyNote}
+          />
           {result.filters && (
             <div className="flex flex-col gap-1.5">
               <div className="flex flex-wrap items-center gap-1.5">
@@ -179,23 +196,40 @@ export default function FindPage() {
             {result.candidates.length === 0 && <li className="px-4 py-8 text-sm text-ink/70">No one on file matches all of those filters.</li>}
             {result.candidates.map((person) => (
               <li key={person.id} className="flex flex-col gap-2 px-4 py-3">
-                <div>
-                  <Link href={`/admin/match?id=${person.id}`} className="font-medium hover:text-pine">
-                    {person.full_name || "Unnamed résumé"}
-                  </Link>
-                  <p className="text-xs text-ink/60">{[person.titles.join(", "), person.location].filter(Boolean).join(" · ")}</p>
-                  {person.skills.length > 0 && <p className="mt-1 text-xs text-ink/50">{person.skills.join(" · ")}</p>}
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    aria-label={`Select ${person.full_name || "candidate"}`}
+                    checked={selected.has(person.id)}
+                    onChange={() => {
+                      setCopied("");
+                      setSelected((current) => {
+                        const next = new Set(current);
+                        if (next.has(person.id)) next.delete(person.id);
+                        else next.add(person.id);
+                        return next;
+                      });
+                    }}
+                  />
+                  <div>
+                    <Link href={`/admin/match?id=${person.id}`} className="font-medium hover:text-pine">
+                      {person.full_name || "Unnamed résumé"}
+                    </Link>
+                    <p className="text-xs text-ink/60">{person.titles.join(", ")}</p>
+                    <p className="text-xs text-ink/80">Email: {shown(person.email)}</p>
+                    <p className="text-xs text-ink/80">Location: {shown(person.location)}</p>
+                    {person.skills.length > 0 && <p className="mt-1 text-xs text-ink/50">{person.skills.join(" · ")}</p>}
+                  </div>
                 </div>
                 {person.email ? (
                   <div className="flex flex-wrap items-center gap-2">
                     <Input readOnly value={person.email} aria-label={`Email for ${person.full_name || "candidate"}`} className="max-w-md" />
-                    <Button type="button" variant="outline" size="sm" onClick={() => copyText(person.email || "", person.id)}>
+                    <Button type="button" variant="outline" size="sm" onClick={() => copyLabeled(person.email || "", person.id)}>
                       {copied === person.id ? "Copied" : "Copy email"}
                     </Button>
                   </div>
-                ) : (
-                  <p className="text-xs text-ink/50">No email address on this résumé.</p>
-                )}
+                ) : null}
               </li>
             ))}
           </ul>

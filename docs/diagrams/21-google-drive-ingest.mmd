@@ -1,0 +1,28 @@
+sequenceDiagram
+    autonumber
+    actor Recruiter
+    participant Drive as Shared Drive folder
+    participant Sched as Cloud Scheduler
+    participant API as talent-api
+    participant DB as Cloud SQL
+    participant LLM as Vertex AI Gemini
+
+    Recruiter->>Drive: Upload or replace a résumé
+    Sched->>API: POST /internal/drive/sync (OIDC token, every 5 min)
+    API->>DB: Read saved page token
+    API->>Drive: changes.list(pageToken, driveId)
+    Drive-->>API: Changed files and a new page token
+    loop Each changed file under the résumé folder
+        API->>API: Folder rules: latest per person, skip offers and invoices
+        API->>DB: Same Drive file id and md5 already stored?
+        alt Unchanged
+            API->>API: Skip, no download
+        else New or edited
+            API->>Drive: files.get alt=media (Google Docs: export PDF)
+            API->>LLM: Read résumé into profile
+            API->>API: FastEmbed vectors
+            API->>DB: Upsert candidate, original_path = drive://fileId
+        end
+    end
+    API->>DB: Save new page token
+    Note over API,DB: A trashed or removed file marks the candidate inactive. The Drive file is never deleted.

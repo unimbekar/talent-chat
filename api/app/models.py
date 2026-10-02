@@ -30,6 +30,8 @@ class Job(Base):
     program_tag: Mapped[str | None] = mapped_column(Text)
     external_req: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, default="open", index=True)
+    close_note: Mapped[str | None] = mapped_column(Text)
+    closed_manually: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     source_line: Mapped[str | None] = mapped_column(Text)
     source_url: Mapped[str | None] = mapped_column(Text)
     needs_review: Mapped[bool] = mapped_column(Boolean, default=False)

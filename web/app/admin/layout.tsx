@@ -29,6 +29,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             <DeskLink href="/admin/candidates" pathname={pathname}>
               Candidates
             </DeskLink>
+            <DeskLink href="/admin/ingest" pathname={pathname}>
+              Ingest
+            </DeskLink>
             <DeskLink href="/admin/find" pathname={pathname}>
               Find
             </DeskLink>

@@ -6,12 +6,14 @@ import { useRouter } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 
 type JobRow = {
   requisition_code: string;
   title: string | null;
   location: string | null;
   status: string;
+  close_note: string | null;
   description_source: string;
   needs_review: boolean;
   last_seen_at: string | null;
@@ -35,6 +37,9 @@ export default function JobsPage() {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
+  const [closing, setClosing] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+  const [closeBusy, setCloseBusy] = useState(false);
 
   async function load() {
     const response = await fetch("/api/admin/jobs");
@@ -75,6 +80,57 @@ export default function JobsPage() {
     }
   }
 
+  async function reopenJob(code: string) {
+    setCloseBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/admin/jobs/${code}/reopen`, { method: "POST" });
+      if (response.status === 401) {
+        router.push("/admin/login");
+        return;
+      }
+      if (!response.ok) {
+        setMessage("The job was not reopened.");
+        return;
+      }
+      setMessage(`${code} is open again.`);
+      await load();
+    } catch {
+      setMessage("The job was not reopened.");
+    } finally {
+      setCloseBusy(false);
+    }
+  }
+
+  async function closeJob(code: string) {
+    setCloseBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/admin/jobs/${code}/close`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) {
+        router.push("/admin/login");
+        return;
+      }
+      if (!response.ok) {
+        setMessage(data.detail || "The job was not closed.");
+        return;
+      }
+      setClosing(null);
+      setNote("");
+      setMessage(`${code} is closed.`);
+      await load();
+    } catch {
+      setMessage("The job was not closed.");
+    } finally {
+      setCloseBusy(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -110,6 +166,7 @@ export default function JobsPage() {
               <th className="px-3 py-2">Status</th>
               <th className="px-3 py-2">Description</th>
               <th className="px-3 py-2">Review</th>
+              <th className="px-3 py-2">Close</th>
             </tr>
           </thead>
           <tbody>
@@ -131,6 +188,38 @@ export default function JobsPage() {
                 <td className="px-3 py-2">{job.status}</td>
                 <td className="px-3 py-2">{job.description_note || job.description_source}</td>
                 <td className="px-3 py-2">{job.needs_review ? <Badge>Needs review</Badge> : ""}</td>
+                <td className="px-3 py-2">
+                  {closing === job.requisition_code ? (
+                    <div className="flex min-w-56 flex-col gap-2">
+                      <Textarea
+                        aria-label={`Why close ${job.requisition_code}`}
+                        value={note}
+                        rows={3}
+                        placeholder="Why is this job closing?"
+                        onChange={(event) => setNote(event.target.value)}
+                      />
+                      <div className="flex gap-2">
+                        <Button type="button" disabled={closeBusy || !note.trim()} onClick={() => closeJob(job.requisition_code)}>
+                          {closeBusy ? "Closing…" : "Confirm close"}
+                        </Button>
+                        <Button type="button" variant="outline" onClick={() => { setClosing(null); setNote(""); }}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setClosing(job.requisition_code);
+                        setNote("");
+                      }}
+                    >
+                      Close
+                    </Button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -138,8 +227,8 @@ export default function JobsPage() {
       </div>
       {(screen?.jobs || []).some((job) => job.status === "closed") && (
         <section className="text-sm text-ink/70">
-          <h2 className="font-medium text-ink">No longer on the careers page</h2>
-          <ul className="mt-2 flex flex-col gap-1">
+          <h2 className="font-medium text-ink">Closed jobs</h2>
+          <ul className="mt-2 flex flex-col gap-2">
             {screen?.jobs
               .filter((job) => job.status === "closed")
               .map((job) => (
@@ -148,6 +237,16 @@ export default function JobsPage() {
                     {job.requisition_code}
                   </Link>{" "}
                   {job.title} · {job.location} · closed
+                  <p className="text-ink">{job.close_note || "No note was saved."}</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-1"
+                    disabled={closeBusy}
+                    onClick={() => reopenJob(job.requisition_code)}
+                  >
+                    Reopen
+                  </Button>
                 </li>
               ))}
           </ul>

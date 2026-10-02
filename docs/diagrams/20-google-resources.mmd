@@ -1,0 +1,30 @@
+flowchart LR
+    site["www.janus-soft.com<br/>Google Sites<br/>button to talent.janus-soft.com"]
+    browser["Browser"]
+
+    subgraph workspace["Google Workspace"]
+        direction TB
+        shared["Shared Drive<br/>résumé folder<br/>DRIVE_FOLDER_ID"]
+    end
+
+    subgraph gcp["Google Cloud project, us-east1"]
+        direction TB
+        web["Cloud Run: talent-web<br/>Next.js<br/>custom domain + managed TLS"]
+        api["Cloud Run: talent-api<br/>FastAPI + FastEmbed<br/>CPU always allocated"]
+        sql["Cloud SQL<br/>Postgres 16 + pgvector<br/>daily backups"]
+        vertex["Vertex AI<br/>Gemini Flash"]
+        sched["Cloud Scheduler<br/>drive-sync every 5 min<br/>careers-crawl every 6 h"]
+        secrets["Secret Manager<br/>DB passwords, session secret,<br/>admin password hash"]
+        registry["Artifact Registry<br/>api and web images"]
+    end
+
+    site -->|"click"| browser
+    browser -->|"https"| web
+    web -->|"/api rewrite<br/>API_INTERNAL_URL"| api
+    api -->|"Cloud SQL connector<br/>app_public / app_admin"| sql
+    api -->|"chat/completions<br/>hourly OAuth token"| vertex
+    api -->|"changes.list, files.get<br/>read-only service account"| shared
+    sched -->|"OIDC-signed POST"| api
+    secrets -->|"env at start"| api
+    registry -->|"images"| web
+    registry -->|"images"| api

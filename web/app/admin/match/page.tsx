@@ -55,8 +55,11 @@ function MatchPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [requiredByJob, setRequiredByJob] = useState<Record<string, string>>({});
   const [matches, setMatches] = useState<MatchRow[]>([]);
-  const [message, setMessage] = useState("");
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [ranking, setRanking] = useState(false);
+  const [rankPercent, setRankPercent] = useState(0);
+  const [fileName, setFileName] = useState("");
   const loadGeneration = useRef(0);
   const candidateId = params.get("id") || "";
 
@@ -66,7 +69,10 @@ function MatchPage() {
       router.push("/admin/login");
       return;
     }
-    if (!response.ok) return;
+    if (!response.ok) {
+      setNotice({ tone: "error", text: "That résumé could not be opened." });
+      return;
+    }
     const data = await response.json();
     setRequiredByJob({});
     setProfile(data.candidate);
@@ -84,7 +90,10 @@ function MatchPage() {
         router.push("/admin/login");
         return;
       }
-      if (!response.ok) return;
+      if (!response.ok) {
+        setNotice({ tone: "error", text: "That résumé could not be opened." });
+        return;
+      }
       const data = await response.json();
       if (cancelled || generation !== loadGeneration.current) return;
       setProfile(data.candidate);
@@ -97,63 +106,117 @@ function MatchPage() {
 
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const response = await fetch("/api/admin/resumes", { method: "POST", body: form });
-    if (response.status === 401) {
-      router.push("/admin/login");
+    const formEl = event.currentTarget;
+    const chosen = formEl.querySelector<HTMLInputElement>('input[type="file"]')?.files?.[0];
+    if (!chosen) {
+      setNotice({ tone: "error", text: "Choose a PDF, DOC, DOCX, or TXT file first." });
       return;
     }
-    const data = await response.json();
-    if (!response.ok) {
-      setMessage(data.detail || "Upload failed.");
+    const suffix = chosen.name.split(".").pop()?.toLowerCase() || "";
+    if (!["pdf", "doc", "docx", "txt"].includes(suffix)) {
+      setNotice({ tone: "error", text: "Upload a PDF, DOC, DOCX, or TXT file." });
       return;
     }
-    if (data.already_ingested) {
-      await openCandidate(data.candidate_id);
-      setMessage("This résumé is already on file. The saved profile is open below. Confirm and rank to refresh the matches.");
+    if (chosen.size === 0) {
+      setNotice({ tone: "error", text: "That file is empty." });
       return;
     }
-    setProfile(data.candidate);
-    setMatches([]);
-    setMessage("");
-    router.replace(`/admin/match?id=${data.candidate.id}`);
+    setUploading(true);
+    setNotice({ tone: "info", text: `Reading ${chosen.name}…` });
+    try {
+      const response = await fetch("/api/admin/resumes", { method: "POST", body: new FormData(formEl) });
+      if (response.status === 401) {
+        router.push("/admin/login");
+        return;
+      }
+      const data = await readBody(response);
+      if (!response.ok) {
+        setNotice({ tone: "error", text: detailOf(data) || "The upload did not finish. Try the file again." });
+        return;
+      }
+      formEl.reset();
+      setFileName("");
+      if (data.already_ingested) {
+        if (!data.candidate_id) {
+          setNotice({ tone: "error", text: "This résumé is already on file, but the saved profile could not be opened." });
+          return;
+        }
+        await openCandidate(data.candidate_id);
+        setNotice({
+          tone: "info",
+          text: "This résumé is already on file. The saved profile is open below. Confirm and rank to refresh the matches.",
+        });
+        return;
+      }
+      if (!data.candidate?.id) {
+        setNotice({ tone: "error", text: "The file was accepted, but no profile came back. Try the upload again." });
+        return;
+      }
+      setProfile(data.candidate);
+      setMatches([]);
+      setNotice({ tone: "ok", text: `${data.candidate.full_name || chosen.name} is ready. Review the profile, then confirm and rank.` });
+      router.replace(`/admin/match?id=${data.candidate.id}`);
+    } catch {
+      setNotice({ tone: "error", text: "The upload did not finish. Check the file and try again." });
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function confirm() {
     if (!profile || ranking) return;
     const generation = ++loadGeneration.current;
+    const started = Date.now();
     setRanking(true);
-    setMessage("");
+    setRankPercent(8);
+    setNotice({ tone: "info", text: "Comparing this résumé with each open job." });
+    const timer = window.setInterval(() => {
+      const elapsed = Date.now() - started;
+      setRankPercent(Math.min(90, 8 + Math.round((elapsed / 25000) * 82)));
+    }, 400);
     try {
       const response = await fetch(`/api/admin/resumes/${profile.id}/confirm`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(profile),
       });
-      const data = await response.json().catch(() => ({}));
+      const data = await readBody(response);
       if (generation !== loadGeneration.current) return;
       if (!response.ok) {
-        setMessage(data.detail || "Ranking did not finish. The candidate list is unchanged.");
+        setNotice({ tone: "error", text: detailOf(data) || "Ranking did not finish. The job list is unchanged." });
         return;
       }
-      setMatches(data.matches || []);
-      setProfile(data.candidate);
-      setMessage(data.matches?.length ? "" : "Ranking finished. No open job is on file.");
+      const next = data.matches || [];
+      setMatches(next);
+      if (data.candidate) setProfile(data.candidate);
+      setRankPercent(100);
+      const visibleCount = next.filter((row) => row.mandatory_pct != null && row.mandatory_pct >= 0.5).length;
+      setNotice(
+        visibleCount
+          ? { tone: "ok", text: `Ranking finished. ${visibleCount} ${visibleCount === 1 ? "job covers" : "jobs cover"} at least half of the mandatory lines.` }
+          : { tone: "info", text: "Ranking finished. No open job covers at least half of the mandatory lines." },
+      );
     } catch {
       if (generation === loadGeneration.current) {
-        setMessage("Ranking did not finish. The candidate list is unchanged.");
+        setNotice({ tone: "error", text: "Ranking did not finish. The job list is unchanged." });
       }
     } finally {
+      window.clearInterval(timer);
       if (generation === loadGeneration.current) setRanking(false);
     }
   }
 
   async function remove() {
-    if (!profile) return;
-    await fetch(`/api/admin/resumes/${profile.id}`, { method: "DELETE" });
+    if (!profile || ranking || uploading) return;
+    if (!window.confirm(`Delete ${profile.full_name || "this résumé"} from the desk?`)) return;
+    const response = await fetch(`/api/admin/resumes/${profile.id}`, { method: "DELETE" });
+    if (!response.ok) {
+      setNotice({ tone: "error", text: "The résumé was not deleted." });
+      return;
+    }
     setProfile(null);
     setMatches([]);
-    setMessage("");
+    setNotice({ tone: "ok", text: "The résumé was deleted." });
     router.replace("/admin/match");
   }
 
@@ -171,12 +234,26 @@ function MatchPage() {
       </div>
       <form onSubmit={upload} className="flex flex-col gap-3 rounded-lg border border-line bg-card p-4 sm:flex-row sm:items-end">
         <label className="flex-1 text-sm">
-          PDF, DOCX, or TXT
-          <Input name="file" type="file" accept=".pdf,.docx,.txt,.doc" className="mt-1" required />
+          PDF, DOC, DOCX, or TXT
+          <Input
+            name="file"
+            type="file"
+            accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword"
+            className="mt-1"
+            disabled={uploading}
+            onChange={(event) => {
+              setFileName(event.target.files?.[0]?.name || "");
+              setNotice(null);
+            }}
+          />
+          {fileName && <span className="mt-1 block text-xs text-ink/60">{fileName}</span>}
         </label>
-        <Button type="submit">Upload</Button>
+        <Button type="submit" disabled={uploading}>
+          {uploading ? "Reading…" : "Upload"}
+        </Button>
       </form>
-      {message && <p className="text-sm">{message}</p>}
+      {uploading && <WorkBar label="Reading the résumé and building a profile…" percent={null} />}
+      {notice && <Notice tone={notice.tone} text={notice.text} />}
       {profile && (
         <Card>
           <CardHeader>
@@ -223,13 +300,14 @@ function MatchPage() {
               A strong match covers at least 90% of every mandatory line. Any desired skill is a plus and does not lower the mandatory score.
             </p>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" onClick={confirm} disabled={ranking}>
+              <Button type="button" onClick={confirm} disabled={ranking || uploading}>
                 {ranking ? "Ranking…" : "Confirm and rank"}
               </Button>
-              <Button type="button" variant="outline" onClick={remove}>
+              <Button type="button" variant="outline" onClick={remove} disabled={ranking || uploading}>
                 Delete
               </Button>
             </div>
+            {ranking && <WorkBar label="Comparing this résumé with each open job…" percent={rankPercent} />}
           </CardContent>
         </Card>
       )}
@@ -256,6 +334,68 @@ function MatchPage() {
       )}
     </div>
   );
+}
+
+type Notice = { tone: "error" | "info" | "ok"; text: string };
+
+function Notice({ tone, text }: Notice) {
+  const toneClass = {
+    error: "border-red-300 bg-red-50 text-red-800",
+    info: "border-amber-300 bg-amber-50 text-amber-950",
+    ok: "border-emerald-300 bg-emerald-50 text-emerald-900",
+  }[tone];
+  return (
+    <p className={`rounded-md border px-3 py-2 text-sm ${toneClass}`} role={tone === "error" ? "alert" : "status"}>
+      {text}
+    </p>
+  );
+}
+
+function WorkBar({ label, percent }: { label: string; percent: number | null }) {
+  return (
+    <div className="rounded-lg border border-line bg-card px-4 py-3" role="status">
+      <div className="flex items-center justify-between gap-3 text-sm">
+        <p>{label}</p>
+        {percent != null && <p className="font-mono text-xs text-ink/60">{percent}%</p>}
+      </div>
+      <div className="mt-2 h-2 overflow-hidden rounded-full bg-desk">
+        {percent == null ? (
+          <div className="h-full w-1/3 bg-pine" style={{ animation: "work-slide 1.2s ease-in-out infinite" }} />
+        ) : (
+          <div className="h-full bg-pine transition-all" style={{ width: `${percent}%` }} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+type ApiBody = {
+  detail?: unknown;
+  already_ingested?: boolean;
+  candidate_id?: string;
+  candidate?: Profile;
+  matches?: MatchRow[];
+};
+
+async function readBody(response: Response): Promise<ApiBody> {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { detail: "The server did not finish that request. Try again." };
+  }
+}
+
+function detailOf(data: { detail?: unknown }): string {
+  if (typeof data.detail === "string") return data.detail;
+  if (Array.isArray(data.detail)) {
+    return data.detail
+      .map((item) => (typeof item === "string" ? item : item?.msg || ""))
+      .filter(Boolean)
+      .join(" ");
+  }
+  return "";
 }
 
 function MatchCard({

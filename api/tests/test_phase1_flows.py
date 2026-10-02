@@ -308,7 +308,7 @@ def test_top_secret_resume_is_accepted_and_ssn_is_redacted(db):
             files={"file": ("resume.doc", b"not a modern file", "application/msword")},
         )
         assert rejected.status_code == 400
-        assert "Save as DOCX or PDF" in rejected.json()["detail"]
+        assert "Could not read" in rejected.json()["detail"]
 
         uploaded = client.post(
             "/admin/resumes",

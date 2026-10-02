@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { CandidateMailBar, selectedEmails, shown } from "@/components/candidate-mail";
+import { IngestProgress, IngestProgressView } from "@/components/ingest-progress";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -32,18 +34,9 @@ type Scan = {
   preview: { label: string; file: string; older: number }[];
 };
 
-type Progress = {
-  running: boolean;
-  finished: boolean;
-  total: number;
-  done: number;
-  imported: number;
-  already: number;
-  failed: number;
+type Progress = IngestProgress & {
   older: number;
   ignored: number;
-  current: string;
-  errors: string[];
 };
 
 const PAGE_SIZE = 25;
@@ -53,11 +46,16 @@ export default function CandidatesPage() {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("");
   const [copied, setCopied] = useState("");
+  const [allEmails, setAllEmails] = useState("");
+  const [allEmailCount, setAllEmailCount] = useState(0);
+  const [emailBusy, setEmailBusy] = useState(false);
   const [page, setPage] = useState(1);
   const [screen, setScreen] = useState<Page | null>(null);
   const [scan, setScan] = useState<Scan | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [error, setError] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [copyNote, setCopyNote] = useState("");
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -83,6 +81,11 @@ export default function CandidatesPage() {
     return () => window.clearTimeout(handle);
   }, [query, category, page, router, progress?.done, progress?.finished]);
 
+  useEffect(() => {
+    setSelected(new Set());
+    setCopyNote("");
+  }, [query, category, page]);
+
   function copyText(value: string, label: string) {
     const area = document.createElement("textarea");
     area.value = value;
@@ -102,9 +105,38 @@ export default function CandidatesPage() {
       fetch("/api/admin/ingest/status").then(async (response) => {
         if (response.ok) setProgress(await response.json());
       });
-    }, 1000);
+    }, 500);
     return () => window.clearInterval(handle);
   }, [progress?.running]);
+
+  async function copyAllEmails() {
+    setEmailBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/admin/candidates/emails");
+      if (response.status === 401) {
+        router.push("/admin/login");
+        return;
+      }
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.detail || "Could not load email addresses.");
+        return;
+      }
+      const list = data.emails || "";
+      setAllEmails(list);
+      setAllEmailCount(data.count || 0);
+      if (!list) {
+        setError("No email addresses are on file.");
+        return;
+      }
+      copyText(list, "all");
+    } catch {
+      setError("Could not load email addresses.");
+    } finally {
+      setEmailBusy(false);
+    }
+  }
 
   async function scanFolder() {
     setError("");
@@ -164,7 +196,7 @@ export default function CandidatesPage() {
           <div>
             <h2 className="font-serif text-xl">Import from the Candidates folder</h2>
             <p className="mt-1 max-w-2xl text-sm text-ink/70">
-              Reads the Synology folder and keeps the newest PDF, DOCX, or TXT for each person. Older copies, offer letters, and legacy Word .doc files stay out.
+              Reads the Synology folder and keeps the newest PDF, DOC, DOCX, or TXT for each person. Older copies, offer letters, and invoices stay out.
             </p>
           </div>
           <div className="flex gap-2">
@@ -191,25 +223,8 @@ export default function CandidatesPage() {
           </ul>
         )}
         {progress && (progress.running || progress.finished) && (
-          <div className="mt-3">
-            <div className="h-1.5 overflow-hidden rounded-full bg-desk">
-              <div
-                className="h-full bg-pine"
-                style={{ width: `${progress.total ? Math.round((progress.done / progress.total) * 100) : 0}%` }}
-              />
-            </div>
-            <p className="mt-2 text-sm text-ink/70">
-              {progress.running
-                ? `${progress.done} of ${progress.total}${progress.current ? ` · ${progress.current}` : ""}`
-                : `Imported ${progress.imported}. Already on file ${progress.already}. Could not read ${progress.failed}.`}
-            </p>
-            {progress.errors.length > 0 && (
-              <ul className="mt-2 text-xs text-red-700">
-                {progress.errors.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            )}
+          <div className="mt-4">
+            <IngestProgressView progress={progress} />
           </div>
         )}
       </section>
@@ -242,26 +257,64 @@ export default function CandidatesPage() {
           />
         </label>
       </div>
-      {screen && screen.candidates.some((candidate) => candidate.email) && (
-        <div className="flex items-center gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() =>
-              copyText(
-                screen.candidates
-                  .map((candidate) => candidate.email)
-                  .filter((email): email is string => Boolean(email))
-                  .join("\n"),
-                "page",
-              )
-            }
-          >
-            Copy emails on this page
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="button" onClick={copyAllEmails} disabled={emailBusy}>
+            {emailBusy ? "Collecting emails…" : "Copy all candidate emails"}
           </Button>
+          {copied === "all" && <span className="text-sm text-pine">Copied {allEmailCount} addresses</span>}
+          {screen && screen.candidates.some((candidate) => candidate.email) && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() =>
+                copyText(
+                  screen.candidates
+                    .map((candidate) => candidate.email)
+                    .filter((email): email is string => Boolean(email))
+                    .join("\n"),
+                  "page",
+                )
+              }
+            >
+              Copy emails on this page
+            </Button>
+          )}
           {copied === "page" && <span className="text-sm text-pine">Copied</span>}
+          <CandidateMailBar
+            total={screen?.candidates.length || 0}
+            selectedCount={(screen?.candidates || []).filter((candidate) => selected.has(candidate.id)).length}
+            allSelected={(screen?.candidates ?? []).length > 0 && (screen?.candidates ?? []).every((candidate) => selected.has(candidate.id))}
+            onToggleAll={() => {
+              setCopied("");
+              const rows = screen?.candidates || [];
+              setSelected(rows.every((candidate) => selected.has(candidate.id)) ? new Set() : new Set(rows.map((candidate) => candidate.id)));
+            }}
+            onCopy={() => {
+              const rows = screen?.candidates || [];
+              const list = selectedEmails(rows, selected);
+              const missing = rows.filter((candidate) => selected.has(candidate.id) && !(candidate.email || "").includes("@")).length;
+              setCopyNote(missing ? `${missing} selected ${missing === 1 ? "candidate has" : "candidates have"} no email, so ${missing === 1 ? "that address was" : "those addresses were"} left out.` : "");
+              if (!list) return;
+              copyText(list, "selected");
+            }}
+            copied={copied === "selected"}
+            note={copyNote}
+          />
         </div>
-      )}
+        {allEmails && (
+          <label className="text-sm">
+            All candidate emails, one address each, separated by commas
+            <textarea
+              readOnly
+              value={allEmails}
+              rows={4}
+              aria-label="All candidate emails"
+              className="mt-1 w-full rounded-md border border-line bg-desk px-3 py-2 text-sm leading-6"
+            />
+          </label>
+        )}
+      </div>
       {error && <p className="text-sm text-red-700">{error}</p>}
 
       <div className="overflow-hidden rounded-xl border border-line bg-card">
@@ -272,16 +325,35 @@ export default function CandidatesPage() {
             {(screen?.candidates || []).map((candidate) => (
               <li key={candidate.id} className="flex flex-col gap-2 px-4 py-3">
                 <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      aria-label={`Select ${candidate.full_name || "candidate"}`}
+                      checked={selected.has(candidate.id)}
+                      onChange={() => {
+                        setCopied("");
+                        setSelected((current) => {
+                          const next = new Set(current);
+                          if (next.has(candidate.id)) next.delete(candidate.id);
+                          else next.add(candidate.id);
+                          return next;
+                        });
+                      }}
+                    />
+                    <div className="min-w-0">
                     <Link href={`/admin/match?id=${candidate.id}`} className="truncate font-medium hover:text-pine">
                       {candidate.full_name || candidate.original_filename || "Unnamed résumé"}
                     </Link>
                     <p className="truncate text-xs text-ink/60">
-                      {[candidate.titles?.join(", "), candidate.location, candidate.original_filename].filter(Boolean).join(" · ")}
+                      {[candidate.titles?.join(", "), candidate.original_filename].filter(Boolean).join(" · ")}
                     </p>
+                    <p className="text-xs text-ink/80">Email: {shown(candidate.email)}</p>
+                    <p className="text-xs text-ink/80">Location: {shown(candidate.location)}</p>
                     {candidate.skills.length > 0 && (
                       <p className="mt-1 truncate text-xs text-ink/50">{candidate.skills.join(" · ")}</p>
                     )}
+                    </div>
                   </div>
                   <span className="shrink-0 rounded-full bg-desk px-2 py-1 text-xs text-ink/70">
                     {candidate.status === "confirmed" ? "Ranked" : "Needs review"}

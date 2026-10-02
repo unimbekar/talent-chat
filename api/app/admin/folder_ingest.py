@@ -2,7 +2,7 @@
 
 A person folder such as ``ArpanSoni`` keeps one file. A pile such as ``Non-FSP``
 keeps one file per person named in the filenames. Offer letters, invoices, and
-legacy ``.doc`` files are left out.
+``.doc``, ``.docx``, ``.pdf``, and ``.txt`` are read. Offer letters and invoices stay out.
 """
 
 from dataclasses import dataclass
@@ -11,7 +11,7 @@ from pathlib import Path
 import re
 import threading
 
-_RESUME_EXT = {".pdf": 3, ".docx": 2, ".txt": 1}
+_RESUME_EXT = {".pdf": 4, ".docx": 3, ".doc": 2, ".txt": 1}
 _SKIP_DIR = {
     "images",
     "image",
@@ -126,6 +126,18 @@ _ROLE = {
     "jul",
     "aug",
     "sep",
+    "sept",
+    "january",
+    "february",
+    "march",
+    "april",
+    "june",
+    "july",
+    "august",
+    "september",
+    "october",
+    "november",
+    "december",
     "info",
     "profile",
     "candidate",
@@ -215,6 +227,7 @@ def filename_ignored(name: str) -> bool:
 
 def _name_tokens(label: str) -> list[str]:
     text = re.sub(r"([a-z])([A-Z])", r"\1 \2", label)
+    text = re.sub(r"\b([A-Z])([A-Z][a-z])", r"\1 \2", text)
     text = re.sub(r"([A-Za-z])(\d)", r"\1 \2", text)
     text = re.sub(r"(\d)([A-Za-z])", r"\1 \2", text)
     text = text.lower().replace("janussoft", " ")
@@ -222,7 +235,7 @@ def _name_tokens(label: str) -> list[str]:
     tokens: list[str] = []
     for token in text.split():
         token = re.sub(r"(19|20)\d{2}", "", token)
-        token = re.sub(r"resume|clearance|curriculum|vitae", "", token)
+        token = re.sub(r"resume|esume|resum|clearance|curriculum|vitae", "", token)
         token = re.sub(r"^\d+", "", token)
         if not token or token.isdigit() or len(token) == 1:
             continue
@@ -297,12 +310,31 @@ def _group_key(path: Path, root: Path) -> str:
     file_key = person_key(path.stem)
     if len(rel.parts) == 1:
         return file_key or _compact(path.stem) or path.name.lower()
-    folder_key = person_key(rel.parts[0])
+    folder = rel.parts[0]
+    folder_key = person_key(folder)
     if not file_key:
-        return folder_key or _compact(rel.parts[0]) or rel.parts[0].lower()
-    if folder_key and _same_person(file_key, folder_key):
+        return folder_key or _compact(folder) or folder.lower()
+    if folder_key and (_same_person(file_key, folder_key) or _belongs_to_folder(folder, path.stem)):
         return folder_key
     return file_key
+
+
+def _belongs_to_folder(folder: str, stem: str) -> bool:
+    """True when a file in someone's folder is another spelling of that person."""
+    folder_tokens = [token for token in _name_tokens(folder) if len(token) >= 3]
+    if not folder_tokens:
+        return False
+    file_tokens = _name_tokens(stem)
+    if set(folder_tokens) & set(file_tokens):
+        return True
+    folder_compact = "".join(folder_tokens)
+    if len(folder_compact) >= 4 and folder_compact in _compact(stem):
+        return True
+    if len(folder_tokens) >= 2 and len(file_tokens) == 1:
+        initial = folder_tokens[0][0] + folder_tokens[-1]
+        if file_tokens[0] == initial:
+            return True
+    return False
 
 
 def _same_person(left: str, right: str) -> bool:
@@ -343,8 +375,74 @@ _STATE: dict = {
     "older": 0,
     "ignored": 0,
     "current": "",
+    "current_file": "",
+    "current_label": "",
+    "current_path": "",
     "errors": [],
+    "unparsed": [],
 }
+
+
+def library_folder(raw: str, *, default: Path) -> Path:
+    """A folder the recruiter named, limited to the mounted résumé library.
+
+    A host path such as /mnt/synology/janus-soft/Resume-Refined is read from
+    the /library mount. A short name is looked up under /resumes and /library.
+    """
+    text = (raw or "").strip().rstrip("/")
+    if not text:
+        if not default.is_dir():
+            raise ValueError("No résumé folder is configured.")
+        return default.resolve()
+
+    host_prefix = "/mnt/synology/janus-soft"
+    if text == host_prefix or text.startswith(host_prefix + "/"):
+        text = "/library" + text[len(host_prefix) :]
+
+    roots = []
+    for root in (default, Path("/resumes"), Path("/library")):
+        try:
+            resolved = root.resolve()
+        except OSError:
+            continue
+        if resolved not in roots:
+            roots.append(resolved)
+
+    if not text.startswith("/"):
+        for root in roots:
+            candidate = (root / text).resolve()
+            if _within(candidate, root) and candidate.is_dir():
+                return candidate
+        raise ValueError(f"No folder named {raw.strip()} was found in the résumé library.")
+
+    candidate = Path(text).resolve()
+    if not any(_within(candidate, root) for root in roots):
+        raise ValueError("Choose a folder inside the résumé library, such as /mnt/synology/janus-soft/Candidates.")
+    if not candidate.is_dir():
+        raise ValueError(f"No folder was found at {raw.strip()}.")
+    return candidate
+
+
+def _within(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def add_unparsed(rows: list[dict], filename: str, reason: str) -> list[dict]:
+    """One row per file name. A repeated failure does not add a second line."""
+    name = (filename or "").strip()
+    if not name:
+        return rows
+    if any(str(row.get("file", "")).casefold() == name.casefold() for row in rows):
+        return rows
+    text = (reason or "Could not read this résumé.").strip()
+    prefix = f"{name}: "
+    if text.casefold().startswith(prefix.casefold()):
+        text = text[len(prefix) :].strip() or text
+    return [*rows, {"file": name, "reason": text}]
 
 
 def ingest_status() -> dict:
@@ -365,8 +463,14 @@ def start_ingest(root: Path, save) -> bool:
             imported=0,
             already=0,
             failed=0,
+            older=0,
+            ignored=0,
             current="Reading the folder",
+            current_file="",
+            current_label="",
+            current_path="",
             errors=[],
+            unparsed=[],
         )
 
     def _run() -> None:
@@ -377,17 +481,25 @@ def start_ingest(root: Path, save) -> bool:
                 _STATE["older"] = scan.older
                 _STATE["ignored"] = scan.ignored
             for item in scan.chosen:
+                try:
+                    shown = str(item.path.relative_to(root))
+                except ValueError:
+                    shown = item.path.name
                 with _LOCK:
-                    _STATE["current"] = item.label
+                    _STATE["current"] = item.path.name
+                    _STATE["current_file"] = item.path.name
+                    _STATE["current_label"] = item.label
+                    _STATE["current_path"] = shown
                 outcome = "failed"
                 try:
                     outcome = save(item.path)
                 except Exception as exc:
-                    message = f"{item.path.name}: {exc}"
+                    message = f"{shown}: {exc}"
                     with _LOCK:
+                        _STATE["unparsed"] = add_unparsed(list(_STATE["unparsed"]), shown, str(exc))
                         errors = list(_STATE["errors"])
                         errors.append(message)
-                        _STATE["errors"] = errors[-8:]
+                        _STATE["errors"] = errors[-12:]
                         _STATE["failed"] += 1
                         _STATE["done"] += 1
                     continue

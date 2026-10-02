@@ -1,0 +1,26 @@
+flowchart LR
+    visitor["Visitor"]
+    recruiter["Recruiter"]
+    site["Google Sites careers page"]
+
+    subgraph run["Cloud Run"]
+        direction TB
+        web["talent-web<br/>/chat and /admin pages"]
+        api["talent-api<br/>/public and /admin routes"]
+    end
+
+    sql["Cloud SQL<br/>Postgres + pgvector"]
+    vertex["Vertex AI Gemini"]
+    drive["Shared Drive<br/>résumé files"]
+    careers["janus-soft.com/career"]
+    sched["Cloud Scheduler"]
+
+    visitor -->|"button"| site
+    site -->|"opens talent.janus-soft.com/chat"| web
+    recruiter -->|"talent.janus-soft.com/admin<br/>admin_session cookie"| web
+    web -->|"/api/..."| api
+    api -->|"app_public for chat<br/>app_admin for admin"| sql
+    api -->|"explanations, Find,<br/>résumé and job reading"| vertex
+    api -->|"open original: drive://fileId"| drive
+    sched -->|"drive-sync, careers-crawl"| api
+    api -->|"crawl"| careers

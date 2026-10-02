@@ -48,6 +48,7 @@ services:
       - uploads:/app/data/uploads
       - ./secrets/admin_password_hash:/run/secrets/admin_password_hash:ro
       - ${RESUME_HOST_DIR:-/mnt/synology/janus-soft/Candidates}:/resumes:ro
+      - ${RESUME_LIBRARY_HOST:-/mnt/synology/janus-soft}:/library:ro
     depends_on:
       postgres:
         condition: service_healthy

@@ -114,6 +114,36 @@ def test_mandatory_and_desired_coverage():
     assert qa["pct"] is not None and qa["pct"] >= 0.5
     assert not any("Kubernetes" in line for line in qa["matched"])
     assert any("Selenium" in line for line in qa["matched"])
+    cyber = (
+        "Cyber Security Analyst with vulnerability assessment, forensic analysis, "
+        "detection and verification of security controls, COTS documentation, and cloud security on AWS."
+    )
+    data_job = [
+        "AI/ML & Multimedia Forensics: Demonstrated experience evaluating next-generation AI/ML capabilities and conducting forensic analysis on multimedia data (images, video, and audio).",
+        "Deepfake Detection & Creation: In-depth, practical knowledge of current deepfake creation workflows, detection algorithms, and verification techniques.",
+        "COTS & Systems Engineering: Proven track record providing systems engineering support for the integration, coordination, and documentation of new COTS capabilities within complex customer environments.",
+        "Cloud Systems: Hands-on experience building, supporting, and scaling systems that leverage cloud infrastructure and cloud services.",
+    ]
+    from app.core.score import gate_mandatory
+
+    cyber_cover = section_coverage({"AWS", "Linux"}, data_job, cyber)
+    assert not any("Deepfake" in line for line in cyber_cover["matched"])
+    assert not any("Multimedia" in line for line in cyber_cover["matched"])
+    gated = gate_mandatory(
+        cyber_cover,
+        skills={"AWS", "Linux"},
+        job_title="Data Scientist",
+        filename="DabirJune2025.docx",
+        text=cyber,
+        titles=["CyberSecurity Engineer"],
+    )
+    assert gated["pct"] == 0.0
+    real = section_coverage(
+        {"Python"},
+        data_job,
+        "Data scientist. Deepfake detection algorithms. Multimedia forensic analysis of images, video, and audio. COTS systems engineering. Cloud infrastructure and cloud services.",
+    )
+    assert real["pct"] == 1.0
     assert covers_title({"Java", "Oracle", "Kubernetes"}, "Salesforce Developer") is False
     assert covers_title({"Salesforce", "Java"}, "Salesforce Developer") is True
     assert covers_title({"Kubernetes"}, "Software Quality Assurance Tester") is True

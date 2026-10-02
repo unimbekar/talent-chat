@@ -4,11 +4,13 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
+import { CandidateMailBar, copyText, selectedEmails, shown } from "@/components/candidate-mail";
+
 type JobOption = { requisition_code: string; title: string | null; status: string };
-type CandidateOption = { id: string; full_name: string | null; original_filename: string | null };
+type CandidateOption = { id: string; full_name: string | null; original_filename: string | null; email: string | null; location: string | null };
 type Review = {
   job: { requisition_code: string; title: string | null; location: string | null };
-  candidate: { id: string; full_name: string | null; original_filename: string | null };
+  candidate: { id: string; full_name: string | null; original_filename: string | null; email: string | null; location: string | null };
   mandatory_pct: number | null;
   mandatory_hit: number;
   mandatory_total: number;
@@ -17,6 +19,8 @@ type Review = {
   desired_total: number;
   meets_bar: boolean;
   title_missing: string[];
+  role_missing: string[];
+  candidate_roles: string[];
   mandatory_matched: string[];
   mandatory_missing: string[];
   desired_matched: string[];
@@ -40,6 +44,9 @@ function ReviewPage() {
   const [candidateHits, setCandidateHits] = useState<CandidateOption[]>([]);
   const [review, setReview] = useState<Review | null>(null);
   const [error, setError] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [copied, setCopied] = useState(false);
+  const [copyNote, setCopyNote] = useState("");
   const job = params.get("job") || "";
   const candidate = params.get("candidate") || "";
 
@@ -136,24 +143,61 @@ function ReviewPage() {
             className="mt-1 w-full rounded-md border border-line bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-pine"
           />
           {candidateOpen && candidateQuery && candidateHits.length > 0 && (
-            <ul className="mt-1 overflow-hidden rounded-md border border-line bg-card">
-              {candidateHits.map((item) => (
-                <li key={item.id}>
-                  <button
-                    type="button"
-                    className="w-full px-3 py-2 text-left hover:bg-desk"
-                    onClick={() => {
-                      choose(job, item.id);
-                      setCandidateQuery(item.full_name || item.original_filename || "");
-                      setCandidateOpen(false);
-                    }}
-                  >
-                    {item.full_name || "Unnamed résumé"}
-                    {item.original_filename ? ` · ${item.original_filename}` : ""}
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <div className="mt-1 rounded-md border border-line bg-card px-3 py-2">
+              <CandidateMailBar
+                total={candidateHits.length}
+                selectedCount={candidateHits.filter((item) => selected.has(item.id)).length}
+                allSelected={candidateHits.every((item) => selected.has(item.id))}
+                onToggleAll={() => {
+                  setCopied(false);
+                  setSelected(candidateHits.every((item) => selected.has(item.id)) ? new Set() : new Set(candidateHits.map((item) => item.id)));
+                }}
+                onCopy={() => {
+                  const list = selectedEmails(candidateHits, selected);
+                  const missing = candidateHits.filter((item) => selected.has(item.id) && !(item.email || "").includes("@")).length;
+                  setCopyNote(missing ? `${missing} selected ${missing === 1 ? "résumé has" : "résumés have"} no email, so ${missing === 1 ? "it was" : "they were"} left out.` : "");
+                  if (!list) return;
+                  copyText(list);
+                  setCopied(true);
+                }}
+                copied={copied}
+                note={copyNote}
+              />
+              <ul className="mt-2">
+                {candidateHits.map((item) => (
+                  <li key={item.id} className="flex items-start gap-2 border-t border-line py-2 first:border-0">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      aria-label={`Select ${item.full_name || "candidate"}`}
+                      checked={selected.has(item.id)}
+                      onChange={() => {
+                        setCopied(false);
+                        setSelected((current) => {
+                          const next = new Set(current);
+                          if (next.has(item.id)) next.delete(item.id);
+                          else next.add(item.id);
+                          return next;
+                        });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 text-left hover:text-pine"
+                      onClick={() => {
+                        choose(job, item.id);
+                        setCandidateQuery(item.full_name || item.original_filename || "");
+                        setCandidateOpen(false);
+                      }}
+                    >
+                      <span className="block">{item.full_name || "Unnamed résumé"}</span>
+                      <span className="block text-xs text-ink/70">Email: {shown(item.email)}</span>
+                      <span className="block text-xs text-ink/70">Location: {shown(item.location)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
       </div>
@@ -171,11 +215,19 @@ function ReviewPage() {
                 {review.candidate.full_name || "Unnamed résumé"}
                 {review.candidate.original_filename ? ` · ${review.candidate.original_filename}` : ""}
               </p>
+              <p className="text-sm text-ink/80">Email: {shown(review.candidate.email)}</p>
+              <p className="text-sm text-ink/80">Location: {shown(review.candidate.location)}</p>
             </div>
             {review.meets_bar && <span className="rounded-full bg-pine/10 px-2.5 py-1 text-xs font-medium text-pine">Strong match</span>}
           </div>
           {review.title_missing.length > 0 && (
             <p className="mt-3 text-sm">The job title asks for {review.title_missing.join(", ")}, which is not on this résumé.</p>
+          )}
+          {(review.role_missing || []).length > 0 && (
+            <p className="mt-3 text-sm">
+              This résumé is {(review.candidate_roles || []).join(" and ") || "a different kind of role"}. The job is{" "}
+              {review.role_missing.join(" and ")}, so shared wording is not counted as a match.
+            </p>
           )}
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <Score label="Mandatory" percent={review.mandatory_pct} hit={review.mandatory_hit} total={review.mandatory_total} strong={review.meets_bar} />

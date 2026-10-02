@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from app.admin.folder_ingest import filename_ignored, person_key, person_label, preferred_name, scan_resumes
+from app.admin.folder_ingest import add_unparsed, filename_ignored, library_folder, person_key, person_label, preferred_name, scan_resumes
 
 
 def _touch(path: Path, text: str, when: datetime) -> None:
@@ -42,6 +42,9 @@ def test_scan_keeps_latest_named_resume_and_splits_a_pile(tmp_path: Path):
     _touch(tmp_path / "Non-FSP" / "Suchitra Chaudhary.docx", "d" * 250, newer)
     _touch(tmp_path / "Non-FSP" / "~$seph_Prusik.docx", "e" * 250, newer)
     _touch(tmp_path / "legacy.doc", "f" * 250, newer)
+    _touch(tmp_path / "Aaron Shah" / "AaronShah.doc", "h" * 250, older)
+    _touch(tmp_path / "Nandu" / "NanduSawant.docx", "i" * 250, older)
+    _touch(tmp_path / "Nandu" / "NanduSawantResume.doc", "j" * 250, newer)
     _touch(tmp_path / "JanusSoft_OfferLetter_Umesh.doc.pdf", "g" * 250, newer)
 
     scan = scan_resumes(tmp_path)
@@ -52,7 +55,55 @@ def test_scan_keeps_latest_named_resume_and_splits_a_pile(tmp_path: Path):
     assert "AaronShahResume2024Clearance.pdf" not in chosen
     assert "Joseph_Prusik.pdf" in chosen
     assert "Suchitra Chaudhary.docx" in chosen
-    assert "legacy.doc" not in chosen
+    assert "legacy.doc" in chosen
+    assert "AaronShah.doc" not in chosen
+    assert "NanduSawantResume.doc" in chosen
+    assert "NanduSawant.docx" not in chosen
     assert "JanusSoft_OfferLetter_Umesh.doc.pdf" not in chosen
+    assert not filename_ignored("NanduSawantResume.doc")
     assert scan.older >= 2
     assert scan.ignored >= 2
+
+
+def test_same_folder_doc_versions_stay_one_person(tmp_path: Path):
+    older = datetime(2022, 12, 1)
+    newer = datetime(2024, 6, 1)
+    _touch(tmp_path / "JunCordoba" / "JCordoba.doc", "a" * 250, older)
+    _touch(tmp_path / "JunCordoba" / "JCordoba_December2022.doc", "b" * 250, newer)
+    _touch(tmp_path / "Neha Soni" / "NSONI - Resume.doc", "c" * 250, older)
+    _touch(tmp_path / "Neha Soni" / "Janus Soft - Software Developer REsume.doc", "d" * 250, newer)
+    _touch(tmp_path / "Non-FSP" / "Joseph_Prusik.pdf", "e" * 250, older)
+    _touch(tmp_path / "Non-FSP" / "Suchitra Chaudhary.docx", "f" * 250, newer)
+
+    scan = scan_resumes(tmp_path)
+    chosen = {item.path.name for item in scan.chosen}
+    assert chosen == {
+        "JCordoba_December2022.doc",
+        "Janus Soft - Software Developer REsume.doc",
+        "Joseph_Prusik.pdf",
+        "Suchitra Chaudhary.docx",
+    }
+    jun = next(item for item in scan.chosen if item.path.name.startswith("JCordoba"))
+    assert "JCordoba.doc" in jun.older[0]
+
+
+def test_unparsed_names_each_file_once():
+    rows = add_unparsed([], "Umesh/UmeshResume.doc", "Could not read that Word .doc file.")
+    rows = add_unparsed(rows, "Umesh/UmeshResume.doc", "Could not read that Word .doc file.")
+    rows = add_unparsed(rows, "umesh/umeshresume.doc", "again")
+    rows = add_unparsed(rows, "KhueCung/Khue Cung for Ingest.doc", "Almost no text could be read.")
+    assert [row["file"] for row in rows] == ["Umesh/UmeshResume.doc", "KhueCung/Khue Cung for Ingest.doc"]
+    assert rows[0]["reason"] == "Could not read that Word .doc file."
+
+
+def test_library_folder_accepts_a_named_subfolder_and_rejects_the_rest(tmp_path: Path):
+    person = tmp_path / "Upender"
+    person.mkdir()
+    assert library_folder("Upender", default=tmp_path) == person.resolve()
+    assert library_folder("", default=tmp_path) == tmp_path.resolve()
+    try:
+        library_folder("/etc", default=tmp_path)
+    except ValueError as exc:
+        assert "résumé library" in str(exc)
+    else:
+        raise AssertionError("a folder outside the library was accepted")
