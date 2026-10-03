@@ -1,0 +1,23 @@
+flowchart TB
+    recruiter["Recruiter on Ingest"]
+
+    subgraph sources["Three sources, one import"]
+        direction TB
+        folder["Server folder<br/>Spark library mount<br/>empty on the AWS instance unless you copy files there"]
+        drive["Google Drive folder link<br/>uses the Google sign-in token<br/>read-only"]
+        s3in["S3 prefix inbox/ only<br/>instance role lists and downloads<br/>originals/ and dumps/ are refused"]
+    end
+
+    stage["Temporary directory on the instance"]
+    rules["Same rules for every source<br/>newest PDF, DOC, DOCX, or TXT per person<br/>offer letters and invoices skipped<br/>unreadable files listed once"]
+    db["candidates in postgres"]
+    originals["S3 originals/sha256<br/>private copy of the file bytes"]
+
+    recruiter --> folder
+    recruiter --> drive
+    recruiter --> s3in
+    folder --> rules
+    drive --> stage --> rules
+    s3in --> stage
+    rules --> db
+    rules --> originals

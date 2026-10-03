@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Lock } from "lucide-react";
@@ -16,6 +16,28 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [google, setGoogle] = useState(false);
+  const [domain, setDomain] = useState("janus-soft.com");
+
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get("error");
+    const messages: Record<string, string> = {
+      domain: "Use a janus-soft.com Google account. Personal Gmail cannot sign in.",
+      denied: "Google sign-in was cancelled.",
+      locked: "Too many sign-in attempts. Try again in 15 minutes.",
+      state: "That sign-in link expired. Start again.",
+      google: "Google did not complete sign-in. Try again.",
+    };
+    if (code && messages[code]) setError(messages[code]);
+    fetch("/api/admin/login/options")
+      .then(async (response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (!data) return;
+        setGoogle(Boolean(data.google));
+        if (data.hosted_domain) setDomain(data.hosted_domain);
+      })
+      .catch(() => undefined);
+  }, []);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -73,7 +95,17 @@ export default function LoginPage() {
           </span>
           <h2 className="mt-4 font-serif text-3xl">Sign in</h2>
           <p className="mt-1 text-sm text-ink/60">Recruiters only. Your session lasts until you log out or it expires.</p>
-          <form onSubmit={onSubmit} className="mt-8 flex flex-col gap-3">
+          {google && (
+            <a
+              href="/api/admin/login/google"
+              className="mt-8 inline-flex h-11 items-center justify-center rounded-md bg-ink px-4 text-sm font-medium text-white hover:bg-ink/90"
+            >
+              Sign in with Google
+            </a>
+          )}
+          {google && <p className="mt-2 text-xs text-ink/55">Use your @{domain} Workspace account. That sign-in can also read the Drive folders you already have access to.</p>}
+          <form onSubmit={onSubmit} className={`flex flex-col gap-3 ${google ? "mt-6" : "mt-8"}`}>
+            {google && <p className="text-xs uppercase tracking-wide text-ink/45">Or use the break-glass password</p>}
             <Label htmlFor="password">Password</Label>
             <Input id="password" type="password" autoFocus autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} />
             {error && (

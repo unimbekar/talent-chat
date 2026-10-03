@@ -1,0 +1,24 @@
+sequenceDiagram
+    autonumber
+    actor R as Recruiter
+    participant C as Caddy
+    participant A as api
+    participant G as Google
+    participant S as Secrets Manager
+    participant P as postgres as app_admin
+
+    Note over S,A: First boot reads the OAuth client into .env. The secret never sits in user data.
+    R->>C: GET /admin
+    C-->>R: Sign in with Google
+    R->>C: GET /api/admin/login/google
+    C->>A: GET /admin/login/google
+    A-->>R: redirect to Google, hd=janus-soft.com, Drive read-only
+    R->>G: Workspace password and consent
+    G-->>R: redirect to /api/admin/login/google/callback
+    R->>A: code and signed state
+    A->>G: exchange the code
+    G-->>A: email, hosted domain, refresh token
+    A->>A: email must be verified and end with @janus-soft.com
+    A->>P: store an admin session row
+    A-->>R: HttpOnly cookie, then /admin/dashboard
+    Note over R,G: A @gmail.com address is refused. The password login has no Drive token.

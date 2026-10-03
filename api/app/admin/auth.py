@@ -37,11 +37,29 @@ def _serializer() -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(get_settings().session_secret, salt="admin-session")
 
 
-def issue_session(session: Session) -> str:
+def issue_session(session: Session, *, email: str = "", google_refresh: str = "") -> str:
     row = AdminSession(expires_at=datetime.now(timezone.utc) + timedelta(seconds=_MAX_AGE))
     session.add(row)
     session.flush()
-    return _serializer().dumps({"sid": str(row.id)})
+    payload: dict[str, str] = {"sid": str(row.id)}
+    if email:
+        payload["email"] = email
+    if google_refresh:
+        payload["gr"] = google_refresh
+    return _serializer().dumps(payload)
+
+
+def session_claims(token: str | None) -> dict[str, str]:
+    """Signed cookie fields. Empty when the cookie is missing or expired."""
+    if not token:
+        return {}
+    try:
+        data = _serializer().loads(token, max_age=_MAX_AGE)
+    except (BadSignature, SignatureExpired):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {key: value for key, value in data.items() if isinstance(value, str)}
 
 
 def read_session(session: Session, token: str | None) -> AdminSession | None:

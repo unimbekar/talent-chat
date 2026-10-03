@@ -1,6 +1,6 @@
 flowchart TB
     careers["janus-soft.com<br/>Google Sites, unchanged"]
-    dns["DNS name<br/>jobs.janus-soft.com"]
+    dns["DNS name<br/>chat.janus-soft.com"]
 
     subgraph account["AWS account, us-east-1"]
         direction TB
@@ -18,9 +18,10 @@ flowchart TB
 
         profile["Instance profile"]
         role["IAM role<br/>stack-instance"]
-        s3["S3 bucket<br/>private, SSE-S3<br/>dumps expire in 14 days"]
+        s3["S3 bucket<br/>inbox, originals, dumps<br/>dumps expire in 14 days"]
         policy["Bucket policy<br/>deny non-TLS"]
-        secret["Secrets Manager<br/>talent-chat/stack-name"]
+        secret["Secrets Manager<br/>passwords"]
+        google["Secrets Manager<br/>Google OAuth client"]
         ssm["Session Manager"]
         bedrock["Bedrock Nova Lite<br/>amazon.nova-lite-v1:0"]
     end
@@ -33,6 +34,7 @@ flowchart TB
     ec2 --> profile --> role
     role --> s3
     role --> secret
+    role --> google
     role --> bedrock
     s3 --- policy
     ssm -->|"shell, port 22 closed"| ec2

@@ -21,11 +21,18 @@ type Progress = IngestProgress & {
 };
 
 type Notice = { tone: "error" | "info" | "ok"; text: string };
+type Source = "folder" | "drive" | "s3";
 
 export default function IngestPage() {
   const router = useRouter();
   const [library, setLibrary] = useState("/library");
   const [path, setPath] = useState("");
+  const [source, setSource] = useState<Source>("folder");
+  const [driveReady, setDriveReady] = useState(false);
+  const [googleOn, setGoogleOn] = useState(false);
+  const [s3Ready, setS3Ready] = useState(false);
+  const [signedInAs, setSignedInAs] = useState("");
+  const [inbox, setInbox] = useState("inbox");
 
   useEffect(() => {
     fetch("/api/admin/overview").then(async (response) => {
@@ -39,6 +46,15 @@ export default function IngestPage() {
         setLibrary(data.library_host);
         setPath((current) => current || `${data.library_host}/Candidates`);
       }
+    });
+    fetch("/api/admin/session").then(async (response) => {
+      if (!response.ok) return;
+      const data = await response.json();
+      setDriveReady(Boolean(data.drive));
+      setGoogleOn(Boolean(data.google));
+      setS3Ready(Boolean(data.s3));
+      setSignedInAs(data.email || "");
+      if (data.s3_prefix) setInbox(data.s3_prefix);
     });
   }, [router]);
   const [scan, setScan] = useState<Scan | null>(null);
@@ -91,7 +107,7 @@ export default function IngestPage() {
     setNotice(null);
     setScan(null);
     try {
-      const response = await fetch(`/api/admin/ingest/scan?path=${encodeURIComponent(folder)}`);
+      const response = await fetch(`/api/admin/ingest/scan?${new URLSearchParams({ path: folder, source })}`);
       if (response.status === 401) {
         router.push("/admin/login");
         return;
@@ -126,7 +142,7 @@ export default function IngestPage() {
       const response = await fetch("/api/admin/ingest/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: folder }),
+        body: JSON.stringify({ path: folder, source }),
       });
       if (response.status === 401) {
         router.push("/admin/login");
@@ -165,28 +181,67 @@ export default function IngestPage() {
       <div>
         <h1 className="page-title">Ingest résumés</h1>
         <p className="page-lead">
-          Point at a folder on the résumé library. The import keeps the newest PDF, DOC, DOCX, or TXT for each person. Offer letters and invoices stay out. Nothing is emailed.
+          Import the newest PDF, DOC, DOCX, or TXT for each person from a server folder, a Google Drive folder, or the S3 inbox. Offer letters and invoices stay out. Nothing is emailed.
         </p>
       </div>
 
       <form onSubmit={checkFolder} className="panel p-4">
-        <label className="block text-sm">
-          Folder
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Import source">
+          {(
+            [
+              ["folder", "Server folder"],
+              ["drive", "Google Drive"],
+              ["s3", "Amazon S3"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={source === value}
+              className={`rounded-full px-3 py-1 text-sm ${source === value ? "bg-ink text-white" : "bg-desk text-ink/70"}`}
+              onClick={() => {
+                setSource(value);
+                setScan(null);
+                setPath(value === "folder" ? `${library}/Candidates` : value === "s3" ? `${inbox}/` : "");
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <label className="mt-4 block text-sm">
+          {source === "drive" ? "Drive folder" : source === "s3" ? "S3 prefix" : "Folder"}
           <Input
             value={path}
             onChange={(event) => {
               setPath(event.target.value);
               setScan(null);
             }}
-            placeholder={`${library}/Candidates`}
+            placeholder={source === "drive" ? "https://drive.google.com/drive/folders/…" : source === "s3" ? `${inbox}/` : `${library}/Candidates`}
             className="mt-1 font-mono"
-            aria-label="Folder"
+            aria-label={source === "drive" ? "Drive folder" : source === "s3" ? "S3 prefix" : "Folder"}
             autoComplete="off"
           />
         </label>
-        <p className="mt-2 text-xs text-ink/60">A full path inside {library}, or the short name of a folder under Candidates.</p>
+        <p className="mt-2 text-xs text-ink/60">
+          {source === "drive" && (driveReady
+            ? `Reads folders your Google account can open${signedInAs ? ` (${signedInAs})` : ""}.`
+            : googleOn
+              ? "Sign in with your janus-soft.com Google account before reading Drive."
+              : "Google sign-in is not configured on this server yet.")}
+          {source === "s3" && (s3Ready
+            ? `Files already in s3 under ${inbox}/. originals and database dumps are not imported from here.`
+            : "S3 import runs on the AWS site, where the private résumé bucket is configured.")}
+          {source === "folder" && `A full path inside ${library}, or the short name of a folder under Candidates.`}
+        </p>
+        {source === "drive" && !driveReady && googleOn && (
+          <a href="/api/admin/login/google" className="mt-2 inline-block text-sm text-pine-deep underline">
+            Sign in with Google
+          </a>
+        )}
         <div className="mt-3 flex flex-wrap gap-2">
-          <Button type="submit" variant="outline" disabled={checking || progress?.running}>
+          <Button type="submit" variant="outline" disabled={checking || progress?.running || (source === "drive" && !driveReady) || (source === "s3" && !s3Ready)}>
             {checking ? "Checking…" : "Check folder"}
           </Button>
           <Button type="button" onClick={startImport} disabled={!scan || scan.people === 0 || progress?.running}>

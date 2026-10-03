@@ -1,0 +1,28 @@
+sequenceDiagram
+    autonumber
+    actor V as Visitor
+    participant C as Caddy
+    participant W as web
+    participant A as api
+    participant P as postgres as app_public
+    participant B as Bedrock Nova Lite
+
+    V->>C: GET /chat
+    C->>W: page request
+    W-->>V: chat page
+    V->>C: POST /api/public/chat
+    Note over V,C: the question, explain false, prior codes
+    C->>A: POST /public/chat
+    Note over C,A: /api removed, visitor IP kept
+    A->>A: refuse candidate and email questions
+    A->>A: parse the question, including a one-letter typo
+    A->>P: open jobs that match skills, city, distance, or a tool line
+    P-->>A: matching rows
+    A-->>V: plain sentence and job cards
+    Note over V,A: this response does not call the model
+    V->>C: POST /api/public/explain
+    C->>A: POST /public/explain
+    A->>B: write two to four sentences from those cards
+    B-->>A: the paragraph, or an error
+    A-->>V: replace the sentence when the model returns text
+    Note over V,B: a Bedrock error leaves the cards and the plain sentence

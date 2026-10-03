@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     embedding_model: str = "nomic-ai/nomic-embed-text-v1.5"
     file_dir: str = "./data/uploads"
     s3_bucket: str = ""
+    s3_ingest_prefix: str = "inbox"
+    public_base_url: str = "http://localhost:3010"
+    google_client_id: str = ""
+    google_client_secret: str = ""
     resume_folder: str = ""
     locations_file: str = ""
 

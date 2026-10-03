@@ -1,0 +1,47 @@
+flowchart TB
+    visitor["Visitor browser"]
+    recruiter["Recruiter browser"]
+    site["www.janus-soft.com<br/>Google Site, unchanged"]
+    mail["Workspace mail<br/>MX, SPF, DKIM unchanged"]
+    dns["Existing DNS zone<br/>one new A record: chat"]
+    google["Google OAuth<br/>Internal, @janus-soft.com"]
+    drive["Google Drive<br/>folders the recruiter can open"]
+
+    subgraph aws["AWS account, us-east-1"]
+        direction TB
+        eip["Elastic IP<br/>free while attached to the instance"]
+        r53["Route 53 A record<br/>only if HostedZoneId is set"]
+
+        subgraph vpc["VPC 10.20.0.0/16 — no NAT gateway"]
+            direction TB
+            igw["Internet gateway"]
+            rt["Public route table<br/>0.0.0.0/0 to the gateway"]
+            subnet["Public subnet 10.20.1.0/24"]
+            sg["Security group<br/>80 and 443 from the internet<br/>22 only if SshCidr is set<br/>5432, 3000, 8000 closed"]
+            ec2["EC2 t4g.medium<br/>Amazon Linux 2023 arm64<br/>30 GB gp3 encrypted<br/>IMDSv2, hop limit 2"]
+        end
+
+        role["IAM role stack-instance<br/>plus Session Manager"]
+        bucket["S3 bucket, private, SSE-S3<br/>inbox/ originals/ dumps/"]
+        policy["Bucket policy<br/>deny any request that is not TLS"]
+        appsecret["Secrets Manager<br/>talent-chat/stack<br/>passwords, kept if the stack is deleted"]
+        gsecret["Secrets Manager<br/>talent-chat/stack/google<br/>OAuth client, kept if the stack is deleted"]
+        bedrock["Bedrock Nova Lite<br/>amazon.nova-lite-v1:0<br/>on-demand, this region only"]
+    end
+
+    site -->|"button opens /chat in a new tab"| visitor
+    dns --> eip
+    r53 -.-> eip
+    eip --> ec2
+    igw --> rt --> subnet --> sg --> ec2
+    ec2 --> role
+    role --> bucket
+    role --> appsecret
+    role --> gsecret
+    role --> bedrock
+    bucket --- policy
+    visitor -->|"HTTPS 443"| sg
+    recruiter -->|"HTTPS 443"| sg
+    recruiter -->|"Sign in with Google"| google
+    google -->|"read-only, on import"| drive
+    mail -.->|"not used by this stack"| dns

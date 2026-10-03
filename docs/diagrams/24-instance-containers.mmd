@@ -1,0 +1,17 @@
+flowchart TB
+    browser["Browser<br/>https://chat.janus-soft.com"]
+
+    subgraph ec2["One EC2 instance"]
+        direction TB
+        caddy["Caddy<br/>the only published ports: 80 and 443<br/>Let's Encrypt certificate"]
+        web["web<br/>Next.js pages<br/>not published"]
+        api["api<br/>FastAPI and FastEmbed<br/>not published"]
+        pg["postgres<br/>127.0.0.1:5432 only<br/>app_public and app_admin"]
+    end
+
+    browser -->|"pages: /chat and /admin"| caddy
+    browser -->|"/api/..."| caddy
+    caddy -->|"HTML"| web
+    caddy -->|"strip /api<br/>set X-Forwarded-For to the visitor"| api
+    api -->|"public questions"| pg
+    api -->|"recruiter desk"| pg

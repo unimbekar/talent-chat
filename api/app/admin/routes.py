@@ -4,9 +4,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 import hashlib
 import logging
+import shutil
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.sql.expression import nullslast
@@ -19,8 +21,18 @@ from app.admin.auth import (
     lock_status,
     read_session,
     record_failure,
+    session_claims,
     verify_password,
 )
+from app.admin.google_auth import (
+    GoogleSignInError,
+    access_token,
+    authorization_url,
+    exchange_code,
+    google_configured,
+    sign_state,
+)
+from app.admin.remote_ingest import RemoteIngestError, materialize_drive, materialize_s3
 from app.admin.candidate_repository import by_hash, delete_candidate, get_candidate
 from app.admin.find import describe, find_candidates
 from app.admin.folder_ingest import ingest_status, library_folder, preferred_name, scan_resumes, start_ingest
@@ -90,6 +102,19 @@ def _audit(session: Session, action: str, subject_id: uuid.UUID | None = None, o
     session.add(AuditLog(actor="admin", action=action, subject_id=subject_id, outcome=outcome))
 
 
+def _set_session_cookie(response: Response, token: str) -> None:
+    settings = get_settings()
+    response.set_cookie(
+        cookie_name(),
+        token,
+        httponly=True,
+        samesite="lax",
+        max_age=12 * 3600,
+        secure=settings.session_secure,
+        path="/",
+    )
+
+
 def require_admin(request: Request, session: Session = Depends(get_admin_db)) -> Session:
     token = request.cookies.get(cookie_name())
     if read_session(session, token) is None:
@@ -111,17 +136,69 @@ def login(body: LoginIn, request: Request, response: Response, session: Session 
     token = issue_session(session)
     _audit(session, "login", outcome="ok")
     session.commit()
-    settings = get_settings()
-    response.set_cookie(
-        cookie_name(),
-        token,
-        httponly=True,
-        samesite="lax",
-        max_age=12 * 3600,
-        secure=settings.session_secure,
-        path="/",
-    )
+    _set_session_cookie(response, token)
     return {"ok": True}
+
+
+@router.get("/login/options")
+def login_options():
+    settings = get_settings()
+    return {
+        "google": google_configured(),
+        "password": bool(settings.resolved_admin_hash()),
+        "hosted_domain": settings.company_email_domain,
+    }
+
+
+@router.get("/login/google")
+def login_google():
+    if not google_configured():
+        raise HTTPException(status_code=404, detail="Google sign-in is not configured.")
+    return RedirectResponse(authorization_url(sign_state()), status_code=302)
+
+
+@router.get("/login/google/callback")
+def login_google_callback(
+    request: Request,
+    session: Session = Depends(get_admin_db),
+    code: str = "",
+    state: str = "",
+    error: str = "",
+):
+    base = get_settings().public_base_url.rstrip("/")
+    if error or not code:
+        return RedirectResponse(f"{base}/admin/login?error=denied", status_code=302)
+    ip = client_ip(request, get_settings())
+    if lock_status(session, ip):
+        return RedirectResponse(f"{base}/admin/login?error=locked", status_code=302)
+    try:
+        email, refresh = exchange_code(code, state)
+    except GoogleSignInError as exc:
+        record_failure(session, ip)
+        _audit(session, "login", outcome=exc.code)
+        session.commit()
+        return RedirectResponse(f"{base}/admin/login?error={exc.code}", status_code=302)
+    clear_failures(session, ip)
+    token = issue_session(session, email=email, google_refresh=refresh)
+    _audit(session, "login", outcome=f"google:{email}")
+    session.commit()
+    response = RedirectResponse(f"{base}/admin/dashboard", status_code=302)
+    _set_session_cookie(response, token)
+    return response
+
+
+@router.get("/session")
+def admin_session(request: Request, session: Session = Depends(require_admin)):
+    del session
+    claims = session_claims(request.cookies.get(cookie_name()))
+    settings = get_settings()
+    return {
+        "email": claims.get("email") or "",
+        "drive": bool(claims.get("gr")),
+        "google": google_configured(),
+        "s3": bool(settings.s3_bucket.strip()),
+        "s3_prefix": settings.s3_ingest_prefix.strip().strip("/") or "inbox",
+    }
 
 
 @router.post("/logout")
@@ -584,19 +661,43 @@ def _scan_out(root: Path) -> dict:
 
 
 @router.get("/ingest/scan")
-def ingest_scan(path: str = "", session: Session = Depends(require_admin)):
-    del session
-    return _scan_out(_resume_root(path))
+def ingest_scan(
+    request: Request,
+    path: str = "",
+    source: str = "folder",
+    session: Session = Depends(require_admin),
+):
+    if source == "folder":
+        del session
+        return _scan_out(_resume_root(path))
+    root = _remote_root(request, source, path, download=False)
+    try:
+        found = _scan_out(root)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+    found["folder"] = path.strip() or source
+    return found
 
 
 class IngestStartIn(BaseModel):
     path: str = ""
+    source: str = "folder"
 
 
 @router.post("/ingest/start")
-def ingest_start(body: IngestStartIn | None = Body(default=None), session: Session = Depends(require_admin)):
+def ingest_start(
+    request: Request,
+    body: IngestStartIn | None = Body(default=None),
+    session: Session = Depends(require_admin),
+):
     del session
-    root = _resume_root(body.path if body else "")
+    source = body.source if body else "folder"
+    if source == "folder":
+        root = _resume_root(body.path if body else "")
+        cleanup = None
+    else:
+        root = _remote_root(request, source, body.path if body else "", download=True)
+        cleanup = lambda: shutil.rmtree(root, ignore_errors=True)
 
     def save(path):
         from app.db import admin_session
@@ -611,9 +712,27 @@ def ingest_start(body: IngestStartIn | None = Body(default=None), session: Sessi
             db.close()
         return "already" if result["already_ingested"] and not result.get("refreshed") else "imported"
 
-    if not start_ingest(root, save):
+    if not start_ingest(root, save, on_finished=cleanup):
+        if cleanup is not None:
+            cleanup()
         raise HTTPException(status_code=409, detail="An import is already running.")
     return {"ok": True}
+
+
+def _remote_root(request: Request, source: str, path: str, *, download: bool) -> Path:
+    try:
+        if source == "s3":
+            return materialize_s3(path, download=download)
+        if source == "drive":
+            refresh = session_claims(request.cookies.get(cookie_name())).get("gr") or ""
+            if not refresh:
+                raise RemoteIngestError("Sign in with your janus-soft.com Google account to read Drive.")
+            return materialize_drive(path, access_token(refresh), download=download)
+    except RemoteIngestError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except GoogleSignInError as exc:
+        raise HTTPException(status_code=400, detail="Google Drive access expired. Sign in with Google again.") from exc
+    raise HTTPException(status_code=400, detail="Choose a folder, an S3 inbox, or a Google Drive folder.")
 
 
 @router.get("/ingest/status")

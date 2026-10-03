@@ -1,6 +1,6 @@
 # Janus Soft recruiting assistant
 
-This repository is the recruiting assistant for [Janus Soft Inc.](https://www.janus-soft.com): a public job chat and a recruiter desk. Phase 1 runs on an NVIDIA DGX Spark with Docker Compose. Google Drive ingest, email, and the AWS deployment are later phases and are not in this build.
+This repository is the recruiting assistant for [Janus Soft Inc.](https://www.janus-soft.com): a public job chat and a recruiter desk. Phase 1 runs on an NVIDIA DGX Spark with Docker Compose. The public site is the AWS stack in [aws_deploy.md](aws_deploy.md). Recruiters there sign in with a `@janus-soft.com` Google account and can import résumés from Drive or from the S3 inbox. Email sending is still a later phase.
 
 | File | What it is |
 | --- | --- |
@@ -11,7 +11,10 @@ This repository is the recruiting assistant for [Janus Soft Inc.](https://www.ja
 | [llm.md](llm.md) | The chat model (`qwen3.6` on Ollama) and the FastEmbed embedding model. |
 | [workflow.md](workflow.md) | How `/chat` and `/admin` reach each API, and which container handles the call. |
 | [deploy.md](deploy.md) | Phase 1.5: the public instance, Bedrock, private S3, Caddy, and backup restore. |
-| [aws_deploy.md](aws_deploy.md) | AWS resources in the CloudFormation stack, and the request flow through them. |
+| [aws_deploy.md](aws_deploy.md) | CloudFormation deploy for `chat.janus-soft.com`, Google sign-in, and Drive or S3 ingest. |
+| [docs/aws-resources.md](docs/aws-resources.md) | Diagram of every AWS resource the template creates, and the containers on the instance. |
+| [docs/aws-flows.md](docs/aws-flows.md) | Diagrams for a visitor question, Google sign-in, and Drive or S3 import. |
+| [docs/aws-cost.md](docs/aws-cost.md) | Monthly cost of this shape, and the pieces left out to keep it small. |
 | [google_deploy.md](google_deploy.md) | Proposed Google Cloud design: Cloud Run, Cloud SQL, Vertex AI, and automatic résumé import from a Shared Drive. |
 | [publish_cloudflare.md](publish_cloudflare.md) | Publish at `talent.janus-soft.com` with Cloudflare: DNS move, Tunnel from the Spark or a small server, Access for `/admin`, and the Google Sites button. |
 | [PRODUCT.md](PRODUCT.md) | Selling Talent Chat to other firms: features, branding settings, onboarding, gaps to close, pricing, and roadmap. |
@@ -112,7 +115,7 @@ The product is right. The first write-up would have missed the budget, leaked ca
 4. **The DGX Spark builds and batches.** Production, later, is one small always-on instance in `us-east-1`. Keyword search still returns job cards when the language model is down.
 5. **Résumés are PII.** Clearance text is parsed into admin-only fields. Social Security numbers are redacted before storage, logs, model calls, and embeddings. Do not upload classified documents or CUI.
 6. **Email is a later phase.** Phase 1 does not send mail.
-7. **Build in phases.** Phase 1 is this repository. Phase 1.5 is AWS. Drive ingest is Phase 2. The email queue is Phase 3.
+7. **Build in phases.** Phase 1 is this repository. The AWS site in [aws_deploy.md](aws_deploy.md) adds Google sign-in plus Drive and S3 import. The email queue is still later.
 
 ## Budget
 
@@ -252,6 +255,6 @@ curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3010/chat   # expect 2
 
 If port `3010` is already taken, change `WEB_PORT` in `.env` and run `docker compose up -d`.
 
-Do not commit real résumés, `.env`, or `secrets/`. Use synthetic résumés in git. Drive sync is not part of this build.
+Do not commit real résumés, `.env`, or `secrets/`. Use synthetic résumés in git. On the AWS site a recruiter signed in with Google can import a Drive folder, or files already in the S3 inbox.
 
 The public site is a separate machine. [deploy.md](deploy.md) covers the `t4g.medium`, Bedrock, the private bucket, and Caddy. Do not point the Spark compose file at that bucket.

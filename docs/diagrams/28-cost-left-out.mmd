@@ -1,0 +1,19 @@
+flowchart LR
+    subgraph kept["In the monthly bill"]
+        direction TB
+        ec2["t4g.medium always on<br/>about 25 dollars"]
+        disk["30 GB gp3<br/>about 2 to 3 dollars"]
+        secrets["Two Secrets Manager secrets<br/>about 1 dollar"]
+        s3["S3 Standard<br/>résumés and 14 days of dumps<br/>usually under 1 dollar"]
+        model["Bedrock Nova Lite<br/>only when a sentence is written<br/>a few dollars"]
+    end
+
+    subgraph out["Left out on purpose"]
+        direction TB
+        alb["Application Load Balancer<br/>about 16 dollars"]
+        nat["NAT gateway<br/>about 32 dollars plus data"]
+        rds["RDS or Aurora<br/>about 15 dollars and up"]
+        cf["CloudFront"]
+        os["OpenSearch, Redis, Cognito"]
+        zone["A new Route 53 zone<br/>use the DNS zone you already have"]
+    end

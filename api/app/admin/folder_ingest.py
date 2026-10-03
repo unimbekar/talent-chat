@@ -452,7 +452,7 @@ def ingest_status() -> dict:
         return dict(_STATE)
 
 
-def start_ingest(root: Path, save) -> bool:
+def start_ingest(root: Path, save, on_finished=None) -> bool:
     """Start a background import. save(path) returns 'imported' or 'already', or raises."""
     with _LOCK:
         if _STATE["running"]:
@@ -516,6 +516,11 @@ def start_ingest(root: Path, save) -> bool:
                 _STATE["running"] = False
                 _STATE["finished"] = True
                 _STATE["current"] = ""
+            if on_finished is not None:
+                try:
+                    on_finished()
+                except Exception:
+                    pass
 
     threading.Thread(target=_run, name="folder-ingest", daemon=True).start()
     return True

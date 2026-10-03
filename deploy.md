@@ -1,10 +1,10 @@
 # Phase 1.5 — public site
 
-The public chat runs on one `t4g.medium` in `us-east-1`. The DGX Spark can be off. This file is the instance setup, the nightly backup, and the restore drill. The pictures of every AWS resource and the request path are in [aws_deploy.md](aws_deploy.md).
+The public chat runs on one `t4g.medium` in `us-east-1`. The DGX Spark can be off. This file is the instance setup, the nightly backup, and the restore drill. Create the stack, the DNS record, Google sign-in, and the two import paths by following [aws_deploy.md](aws_deploy.md).
 
 The Spark stack does not change. Keep using `docker compose up` and `LLM_BACKEND=openai_compat` there. Production is a separate checkout and `docker-compose.prod.yml`.
 
-Out of scope: an Application Load Balancer, a GPU, Redis, OpenSearch, Cognito, Google Drive, and email.
+Out of scope: an Application Load Balancer, a GPU, Redis, OpenSearch, Cognito, and email. Drive import uses the recruiter's Google sign-in. S3 import reads the `inbox/` prefix. Both are in [aws_deploy.md](aws_deploy.md).
 
 ## What talks to what
 
@@ -48,7 +48,9 @@ aws cloudformation deploy \
   --template-file deploy/cloudformation.yml \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides \
-    PublicHost=jobs.janus-soft.com \
+    PublicHost=chat.janus-soft.com \
+    GoogleClientId=YOUR_CLIENT_ID.apps.googleusercontent.com \
+    GoogleClientSecret=YOUR_CLIENT_SECRET \
     AcmEmail=you@janus-soft.com \
     BucketName=talent-chat-ACCOUNTID \
     HostedZoneId=ZXXXXXXXX
@@ -69,11 +71,11 @@ aws secretsmanager get-secret-value \
 
 `admin_password` in that JSON is the `/admin` password. It is not printed in the stack outputs.
 
-Open `https://jobs.janus-soft.com/chat`. Ask for AWS jobs in McLean. The paragraph comes from Nova Lite. Removing the role’s Bedrock permission still returns cards, with the unavailable notice.
+Open `https://chat.janus-soft.com/chat`. Ask for AWS jobs in McLean. The paragraph comes from Nova Lite. Removing the role’s Bedrock permission still returns cards, with the unavailable notice.
 
-Recruiter sign-in is `https://jobs.janus-soft.com/admin`. Do not link that from the careers page. Connect with Session Manager if you need a shell. Port 22 stays closed unless you pass `SshCidr`.
+Recruiter sign-in is `https://chat.janus-soft.com/admin`. Use the `@janus-soft.com` Google account when Drive import is needed. The generated password in Secrets Manager remains the break-glass sign-in. Do not link the admin URL from the careers page. Connect with Session Manager if you need a shell. Port 22 stays closed unless you pass `SshCidr`.
 
-On the [careers page](https://www.janus-soft.com/career), add a button **Ask about open jobs** to `https://jobs.janus-soft.com/chat`, opening in a new tab. `FrameAncestor` (default `https://www.janus-soft.com`) is what allows an iframe later. The button does not need one.
+On the [careers page](https://www.janus-soft.com/career), add a button **Ask about open jobs** to `https://chat.janus-soft.com/chat`, opening in a new tab. `FrameAncestor` (default `https://www.janus-soft.com`) is what allows an iframe later. The button does not need one.
 
 ## Backup
 

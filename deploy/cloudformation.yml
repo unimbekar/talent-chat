@@ -1,8 +1,9 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  Janus Soft public job chat. One t4g.medium in us-east-1, a private S3 bucket,
-  and an instance role. The instance clones the git repo and runs docker-compose.prod.yml.
-  Do not put AWS access keys in this template.
+  Janus Soft public job chat at chat.janus-soft.com. One t4g.medium in us-east-1,
+  a private S3 bucket with an inbox prefix, and the Google OAuth client secret
+  for @janus-soft.com recruiter sign-in. The instance clones the git repo and
+  runs docker-compose.prod.yml. Do not put AWS access keys in this template.
 
 Rules:
   InUsEast1:
@@ -13,7 +14,8 @@ Rules:
 Parameters:
   PublicHost:
     Type: String
-    Description: DNS name for the chat, such as jobs.janus-soft.com. www.janus-soft.com stays on Google Sites.
+    Default: chat.janus-soft.com
+    Description: DNS name for the chat. www.janus-soft.com stays on Google Sites. Leave mail records alone.
     AllowedPattern: "^[a-z0-9]([a-z0-9.-]{0,253}[a-z0-9])?$"
   AcmEmail:
     Type: String
@@ -56,6 +58,17 @@ Parameters:
     Type: String
     Default: ""
     Description: Optional EC2 key pair name. Used only when SshCidr is set.
+  GoogleClientId:
+    Type: String
+    Default: ""
+    Description: >
+      OAuth client id from Google Cloud. Authorized redirect is
+      https://PublicHost/api/admin/login/google/callback. Leave empty until that client exists.
+  GoogleClientSecret:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: OAuth client secret. CloudFormation stores it in Secrets Manager. It is not written into user data.
 
 Conditions:
   HasDns: !Not [!Equals [!Ref HostedZoneId, ""]]
@@ -137,6 +150,10 @@ Resources:
             Prefix: dumps/
             Status: Enabled
             ExpirationInDays: 14
+          - Id: abort-incomplete-multipart
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
       Tags:
         - Key: Name
           Value: !Ref BucketName
@@ -170,6 +187,18 @@ Resources:
         PasswordLength: 32
         ExcludePunctuation: true
 
+  GoogleOAuthSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Sub talent-chat/${AWS::StackName}/google
+      Description: Google OAuth client for @janus-soft.com recruiter sign-in and Drive read.
+      SecretString:
+        Fn::ToJsonString:
+          client_id: !Ref GoogleClientId
+          client_secret: !Ref GoogleClientSecret
+
   AppRole:
     Type: AWS::IAM::Role
     Properties:
@@ -201,6 +230,7 @@ Resources:
                 Resource:
                   - !Sub ${FilesBucket.Arn}/originals/*
                   - !Sub ${FilesBucket.Arn}/dumps/*
+                  - !Sub ${FilesBucket.Arn}/inbox/*
               - Sid: ListThosePrefixes
                 Effect: Allow
                 Action: s3:ListBucket
@@ -210,6 +240,8 @@ Resources:
                     s3:prefix:
                       - originals/*
                       - dumps/*
+                      - inbox/
+                      - inbox/*
               - Sid: AppSecretValue
                 Effect: Allow
                 Action:
@@ -217,6 +249,7 @@ Resources:
                   - secretsmanager:PutSecretValue
                 Resource:
                   - !Ref AppSecret
+                  - !Ref GoogleOAuthSecret
                   - !If [HasGitToken, !Ref GitTokenSecretArn, !Ref AppSecret]
 
   InstanceProfile:
@@ -261,6 +294,7 @@ Resources:
     DependsOn:
       - DefaultRoute
       - FilesBucketPolicy
+      - GoogleOAuthSecret
     CreationPolicy:
       ResourceSignal:
         Timeout: PT60M
@@ -330,6 +364,7 @@ Resources:
           export TALENT_FRAME=${FrameAncestor}
           export TALENT_MODEL=${BedrockModel}
           export TALENT_REGION=${AWS::Region}
+          export TALENT_GOOGLE_SECRET_ID=${GoogleOAuthSecret}
           bash /opt/talent-chat/deploy/bootstrap.sh
           status=0
       Tags:
@@ -376,5 +411,14 @@ Outputs:
     Value: !Sub talent-chat/${AWS::StackName}
   BucketName:
     Value: !Ref FilesBucket
+  S3Inbox:
+    Description: Upload résumés here for the S3 import. The recruiter desk reads this prefix only.
+    Value: !Sub s3://${BucketName}/inbox/
+  GoogleRedirectUri:
+    Description: Register this exact URL on the Google OAuth client before recruiters sign in.
+    Value: !Sub https://${PublicHost}/api/admin/login/google/callback
+  GoogleSecretName:
+    Description: Update client_id and client_secret here if they were empty at stack create, then re-run bootstrap.
+    Value: !Sub talent-chat/${AWS::StackName}/google
   InstanceId:
     Value: !Ref AppInstance

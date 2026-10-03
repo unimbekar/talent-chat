@@ -10,17 +10,23 @@ flowchart LR
     end
 
     careers["janus-soft.com<br/>/career and /jobs"]
+    google["Google sign-in<br/>@janus-soft.com"]
+    drive["Google Drive<br/>read-only on import"]
     bedrock["Bedrock<br/>Nova Lite us-east-1"]
-    originals["S3 originals/<br/>résumé files"]
+    inbox["S3 inbox/<br/>recruiter drop"]
+    originals["S3 originals/<br/>stored résumé bytes"]
     dumps["S3 dumps/<br/>deleted after 14 days"]
-    secret["Secrets Manager<br/>passwords"]
+    secret["Secrets Manager<br/>passwords and Google client"]
 
-    browser -->|"https://host/chat<br/>and /admin"| caddy
+    browser -->|"https://chat.janus-soft.com<br/>/chat and /admin"| caddy
     caddy -->|"HTML"| web
     caddy -->|"/api prefix removed<br/>X-Forwarded-For replaced"| api
     api -->|"app_public or app_admin"| pg
-    api -->|"InvokeModel"| bedrock
+    api -->|"InvokeModel for the sentence"| bedrock
     api -->|"crawl every 6 h"| careers
+    browser -->|"Sign in with Google"| google
+    api -->|"list and download one folder"| drive
+    api -->|"list inbox/ only"| inbox
     api -->|"upload and delete"| originals
     api -->|"07:00 UTC backup upload"| dumps
     secret -->|"first boot writes .env"| ec2
