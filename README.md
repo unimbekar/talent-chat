@@ -19,6 +19,10 @@ This repository is the recruiting assistant for [Janus Soft Inc.](https://www.ja
 | `docs/diagrams/` | Diagram sources (`.mmd`) and rendered PNGs. Re-render with `scripts/render-diagrams.sh`. |
 | `tests/fixtures/careers/` | Snapshot of the live listing and detail pages (2026-09-27), used as parser fixtures. |
 
+## Public chat
+
+Open `/chat`. Visitors ask in their own words about open jobs: a skill, a city, or a requisition code. The answer and the job cards come from the postings on file. A question such as “Which jobs require Spring Boot?” is matched against each posting’s requirement lines. A line that says the tool is excluded does not count. Related wording counts and is shown on the card, so a posting that requires Spring Framework is listed, with that sentence visible. Closed postings that name the tool are listed separately and marked closed. The assistant does not search candidates, emails, or phone numbers.
+
 ## Recruiter desk
 
 Sign in at `/admin`. The header links are Jobs, Candidates, Ingest, Find, Match, and Review. Find is described in [Find candidates](#find-candidates). Ingest is described in [Ingest résumés](#ingest-résumés).

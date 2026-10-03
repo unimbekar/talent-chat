@@ -47,6 +47,7 @@ SEED_SYNONYMS: list[tuple[str, str]] = [
 # (alias, display name). Longer aliases are tried first.
 TOOL_CATALOG: list[tuple[str, str]] = [
     ("Amazon Web Services", "AWS"),
+    ("Machine Learning", "Machine Learning"),
     ("Spring Boot", "Spring Boot"),
     ("Node.js", "Node.js"),
     ("Apache Spark", "Spark"),

@@ -109,15 +109,19 @@ def chat(body: ChatIn, request: Request):
                 "prior_codes": [],
             }
         cards = [_card(hit) for hit in result.hits]
+        closed = [_card(hit, closed=True) for hit in result.closed_hits]
         codes = [card["requisition_code"] for card in cards]
         notice = None
         answer = ""
         explain_pending = False
-        if not cards:
+        if not cards and closed:
+            answer = "No open role requires that. Closed postings that name it are listed below."
+        elif not cards:
             answer = "No open jobs matched that search."
         elif result.parsed and (result.parsed.ask_clearance or result.parsed.ask_posting_fact):
             answer = _quote_only(result)
         elif not body.explain:
+            answer = _plain_answer(result)
             explain_pending = True
         else:
             try:
@@ -133,6 +137,7 @@ def chat(body: ChatIn, request: Request):
             "answer": answer,
             "explain_pending": explain_pending,
             "jobs": cards,
+            "closed_jobs": closed,
             "prior_codes": codes[:24],
         }
     finally:
@@ -166,13 +171,15 @@ def explain(body: ExplainIn, request: Request):
         db.close()
 
 
-def _card(hit) -> dict:
+def _card(hit, closed: bool = False) -> dict:
     job = hit.job
-    on_file = bool((job.description_text or "").strip())
-    quote = ""
-    if on_file:
+    on_file = bool((job.description_text or "").strip() or (hit.evidence or "").strip())
+    quote = (hit.evidence or "").strip()
+    if not quote and on_file:
         paragraphs = [part.strip() for part in (job.description_text or "").split("\n\n") if part.strip()]
         quote = (paragraphs[0] if paragraphs else job.description_text)[:500]
+    else:
+        quote = quote[:500]
     return {
         "requisition_code": job.requisition_code,
         "title": job.title,
@@ -185,7 +192,36 @@ def _card(hit) -> dict:
         "source_url": job.source_url,
         "distance_miles": None if hit.distance_miles is None else round(hit.distance_miles, 1),
         "near_place": hit.near_place,
+        "closed": closed,
     }
+
+
+def _plain_answer(result) -> str:
+    hits = result.hits
+    closed = result.closed_hits
+    if not hits and closed:
+        return "No open role requires that. Closed postings that name it are listed below."
+    if not hits:
+        return "No open jobs matched that search."
+    parsed = result.parsed
+    if parsed and parsed.near_place:
+        if parsed.near_miles is not None:
+            miles = int(parsed.near_miles) if parsed.near_miles == int(parsed.near_miles) else parsed.near_miles
+            where = f"within {miles} miles of {parsed.near_place}"
+        else:
+            where = f"closest to {parsed.near_place}"
+        if len(hits) == 1:
+            job = hits[0].job
+            city = f" in {job.location}" if job.location else ""
+            return f"{job.requisition_code}, {job.title}{city}, is the open role {where}."
+        names = ", ".join(hit.job.requisition_code for hit in hits)
+        return f"{len(hits)} open roles are {where}: {names}."
+    if len(hits) == 1:
+        job = hits[0].job
+        where = f" in {job.location}" if job.location else ""
+        return f"{job.requisition_code}, {job.title}{where}, is the open role. The matching line from the posting is on the card."
+    names = ", ".join(hit.job.requisition_code for hit in hits)
+    return f"{len(hits)} open roles match: {names}. Each card quotes the line from the posting."
 
 
 def _quote_only(result) -> str:
@@ -215,7 +251,8 @@ def _explain(request, result, message: str) -> str:
                 "location": job.location,
                 "distance_miles": None if hit.distance_miles is None else round(hit.distance_miles, 1),
                 "skills": hit.matched_skills,
-                "quote": _public_quote(
+                "quote": (hit.evidence or "").strip()
+                or _public_quote(
                     job.description_text or "",
                     allow_clearance=bool(result.parsed and result.parsed.ask_clearance),
                     limit=2500,
@@ -225,6 +262,7 @@ def _explain(request, result, message: str) -> str:
     system = (
         "You answer a visitor's question about open job postings already retrieved. "
         "Write 2 to 4 sentences. Use only the requisition codes and quotes provided. "
+        "The quote is the posting line that matched. If it names a related tool, such as Spring Framework for a Spring Boot question, say the words the posting uses. "
         "If the quotes do not state what was asked, say that it is not in these postings. "
         "If the question excludes a city, name every city in the retrieved jobs and do not name the excluded city. "
         "If distance_miles is present, use that number and do not invent a different distance. "

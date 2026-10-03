@@ -40,7 +40,7 @@ class Settings(BaseSettings):
         "This tool is not authorized for classified processing and is not a FedRAMP system; "
         "do not upload classified documents or CUI."
     )
-    chat_examples: str = "Java, Python, and AWS jobs|Jobs in Chantilly|Do any roles need a clearance?"
+    chat_examples: str = "Which jobs require Spring Boot?|Java and AWS jobs|Jobs in Chantilly|Do any roles need a clearance?"
     company_email_domain: str = "janus-soft.com"
     resume_library_host: str = "/mnt/synology/janus-soft"
     crawl_interval_hours: float = 6

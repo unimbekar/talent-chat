@@ -11,6 +11,7 @@ from app.core.locations import load_locations, load_places, miles_from_place
 from app.core.tokens import query_vector_text
 from app.models import Job, SkillSynonym
 from app.public.query import ParsedQuery, parse_query
+from app.public.requirements import evidence_line
 
 _CODE = re.compile(r"\b[A-Z][0-9]{3,5}\b")
 
@@ -21,11 +22,13 @@ class SearchHit:
     matched_skills: list[str]
     distance_miles: float | None = None
     near_place: str | None = None
+    evidence: str = ""
 
 
 @dataclass
 class SearchResult:
     hits: list[SearchHit] = field(default_factory=list)
+    closed_hits: list[SearchHit] = field(default_factory=list)
     no_jobs_loaded: bool = False
     parsed: ParsedQuery | None = None
 
@@ -47,7 +50,7 @@ def search_jobs(
     synonyms = load_synonyms(session)
     locations = load_locations()
     parsed = parse_query(message, synonyms, locations, prior_codes)
-    if parsed.codes and not parsed.skills and not parsed.city and not parsed.exclude_city and not parsed.prior_only:
+    if parsed.codes and not parsed.skills and not parsed.phrases and not parsed.city and not parsed.exclude_city and not parsed.prior_only:
         jobs = session.scalars(
             select(Job).where(Job.status == "open", Job.requisition_code.in_(parsed.codes))
         ).all()
@@ -56,7 +59,15 @@ def search_jobs(
 
     # "Show me all positions" has no skill, city, or keyword. List every open job.
     # Do not rerank that list with the embedding of the question itself.
-    if not parsed.skills and not parsed.city and not parsed.exclude_city and not parsed.fts and not parsed.prior_only:
+    if (
+        not parsed.skills
+        and not parsed.phrases
+        and         not parsed.city
+        and not parsed.exclude_city
+        and not parsed.near_place
+        and not parsed.fts
+        and not parsed.prior_only
+    ):
         jobs = session.scalars(select(Job).where(Job.status == "open").order_by(Job.requisition_code)).all()
         return SearchResult(hits=[SearchHit(job=job, matched_skills=[]) for job in jobs], parsed=parsed)
 
@@ -85,6 +96,15 @@ def search_jobs(
     if parsed.fts and not parsed.prior_only and not (parsed.exclude_city and not parsed.skills):
         stmt = stmt.where(Job.tsv.op("@@")(func.plainto_tsquery("english", parsed.fts)))
     jobs = list(session.scalars(stmt).all())
+    evidence: dict[str, str] = {}
+    if parsed.phrases and not parsed.prior_only:
+        kept = []
+        for job in jobs:
+            line = evidence_line(job, parsed.phrases, required_only=parsed.required_only)
+            if line:
+                evidence[job.requisition_code] = line
+                kept.append(job)
+        jobs = kept
     distances: dict[str, float] = {}
     if parsed.near_place:
         origin = next((place for place in load_places() if place.name == parsed.near_place), None)
@@ -112,21 +132,43 @@ def search_jobs(
             )
         except Exception:
             pass
-    wants_all = bool(parsed.skills and re.search(r"(?i)\ball\b", message))
-    limit = 24 if exclude_only or parsed.near_place or wants_all else 8
-    hits = []
-    for job in jobs[:limit]:
-        job_skills = set(job.must_have_skills or []) | set(job.nice_to_have_skills or [])
-        matched = [skill for skill in parsed.skills if skill in job_skills or _text_has(job, parsed.skill_aliases.get(skill, []))]
-        hits.append(
-            SearchHit(
-                job=job,
-                matched_skills=matched or list(parsed.skills),
-                distance_miles=distances.get(job.requisition_code),
-                near_place=parsed.near_place if job.requisition_code in distances else None,
-            )
-        )
-    return SearchResult(hits=hits, parsed=parsed)
+    wants_all = bool((parsed.skills or parsed.phrases) and re.search(r"(?i)\ball\b", message))
+    limit = 24 if exclude_only or parsed.near_place or wants_all or parsed.phrases else 8
+    hits = [_hit(job, parsed, distances, evidence) for job in jobs[:limit]]
+    closed_hits: list[SearchHit] = []
+    if parsed.phrases and not parsed.prior_only:
+        closed_jobs = session.scalars(select(Job).where(Job.status == "closed")).all()
+        for job in closed_jobs:
+            if not _city_ok(job, parsed):
+                continue
+            line = evidence_line(job, parsed.phrases, required_only=parsed.required_only)
+            if line:
+                closed_hits.append(_hit(job, parsed, {}, {job.requisition_code: line}))
+        closed_hits.sort(key=lambda hit: hit.job.requisition_code)
+        closed_hits = closed_hits[:8]
+    return SearchResult(hits=hits, closed_hits=closed_hits, parsed=parsed)
+
+
+def _hit(job: Job, parsed: ParsedQuery, distances: dict[str, float], evidence: dict[str, str]) -> SearchHit:
+    job_skills = set(job.must_have_skills or []) | set(job.nice_to_have_skills or [])
+    matched = [skill for skill in parsed.skills if skill in job_skills or _text_has(job, parsed.skill_aliases.get(skill, []))]
+    if not matched:
+        matched = list(parsed.phrases or parsed.skills)
+    return SearchHit(
+        job=job,
+        matched_skills=matched,
+        distance_miles=distances.get(job.requisition_code),
+        near_place=parsed.near_place if job.requisition_code in distances else None,
+        evidence=evidence.get(job.requisition_code, ""),
+    )
+
+
+def _city_ok(job: Job, parsed: ParsedQuery) -> bool:
+    if parsed.exclude_city:
+        return (job.location or "") != parsed.exclude_city
+    if parsed.city:
+        return job.location == parsed.city
+    return True
 
 
 def drop_unknown_codes(text: str, allowed: set[str]) -> str:

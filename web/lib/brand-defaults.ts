@@ -17,5 +17,5 @@ export const DEFAULT_BRAND: Brand = {
   logo_url: "/brand/logo.svg",
   hero_url: "/brand/hero.webp",
   footer: "",
-  examples: ["Java, Python, and AWS jobs", "Jobs in Chantilly", "Do any roles need a clearance?"],
+  examples: ["Which jobs require Spring Boot?", "Java and AWS jobs", "Jobs in Chantilly", "Do any roles need a clearance?"],
 };
