@@ -107,6 +107,9 @@ PY
 
 docker compose -f docker-compose.prod.yml up -d --build
 
+dnf install -y cronie
+systemctl enable --now crond
+mkdir -p /etc/cron.d
 cat > /etc/cron.d/talent-backup << 'EOF'
 SHELL=/bin/bash
 0 7 * * * root cd /opt/talent-chat && docker compose -f docker-compose.prod.yml exec -T postgres pg_dump -U postgres -Fc talent | docker compose -f docker-compose.prod.yml exec -T api python -m app.backup >> /var/log/talent-backup.log 2>&1

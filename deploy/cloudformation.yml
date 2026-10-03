@@ -409,8 +409,8 @@ Resources:
             fi
           }
           trap finish EXIT
-          dnf install -y docker git aws-cfn-bootstrap
-          systemctl enable --now docker
+          dnf install -y docker git cronie aws-cfn-bootstrap
+          systemctl enable --now docker crond
           mkdir -p /usr/libexec/docker/cli-plugins /usr/local/lib/docker/cli-plugins
           curl -fsSL -o /usr/libexec/docker/cli-plugins/docker-compose \
             https://github.com/docker/compose/releases/download/v2.32.4/docker-compose-linux-aarch64
