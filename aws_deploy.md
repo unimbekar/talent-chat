@@ -55,13 +55,13 @@ aws cloudformation deploy \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides \
     PublicHost=chat.janus-soft.com \
-    AcmEmail=you@janus-soft.com \
-    BucketName=talent-chat-ACCOUNTID \
-    GoogleClientId=YOUR_CLIENT_ID.apps.googleusercontent.com \
-    GoogleClientSecret=YOUR_CLIENT_SECRET \
+    AcmEmail=contact@janus-soft.com \
+    BucketName=janus-soft-jobs-chat \
     DeployMode=dev \
     InstanceType=t4g.medium
 ```
+
+In the CloudFormation console those values are already filled in, including `DeployMode=dev` and `InstanceType=t4g.medium`. Review the form and change a field only when you need a different value. Add `GoogleClientId` and `GoogleClientSecret` when the OAuth client exists. Leave both empty until then.
 
 `DeployMode=dev` is the default. CloudFormation deletes the instance, the bucket, and both secrets with the stack, and the secrets are removed immediately. There is no 30-day recovery window. A non-empty bucket cannot be deleted; empty `inbox/`, `originals/`, and `dumps/` first.
 

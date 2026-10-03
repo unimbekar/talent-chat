@@ -7,6 +7,52 @@ Description: >
   DeployMode prod keeps them. The instance clones the git repo and runs
   docker-compose.prod.yml. Do not put AWS access keys in this template.
 
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Site
+        Parameters:
+          - PublicHost
+          - AcmEmail
+          - DeployMode
+          - InstanceType
+          - FrameAncestor
+          - BedrockModel
+      - Label:
+          default: Storage and code
+        Parameters:
+          - BucketName
+          - RepoUrl
+          - GitRef
+          - GitTokenSecretArn
+      - Label:
+          default: Google sign-in
+        Parameters:
+          - GoogleClientId
+          - GoogleClientSecret
+      - Label:
+          default: Optional network
+        Parameters:
+          - HostedZoneId
+          - SshCidr
+          - KeyName
+    ParameterLabels:
+      PublicHost:
+        default: Public hostname
+      AcmEmail:
+        default: Certificate email
+      BucketName:
+        default: S3 bucket name
+      DeployMode:
+        default: Dev or prod
+      InstanceType:
+        default: Instance size
+      GoogleClientId:
+        default: Google client id
+      GoogleClientSecret:
+        default: Google client secret
+
 Rules:
   InUsEast1:
     Assertions:
@@ -21,11 +67,13 @@ Parameters:
     AllowedPattern: "^[a-z0-9]([a-z0-9.-]{0,253}[a-z0-9])?$"
   AcmEmail:
     Type: String
-    Description: Address Let's Encrypt uses for the certificate on PublicHost.
+    Default: contact@janus-soft.com
+    Description: Address Let's Encrypt uses for the certificate on PublicHost. Pre-filled. Change it if expiry mail should go somewhere else.
     AllowedPattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
   BucketName:
     Type: String
-    Description: Private bucket for résumé originals and database dumps. Globally unique, lowercase.
+    Default: janus-soft-jobs-chat
+    Description: Private bucket for résumé originals and database dumps. Pre-filled. Change it if this name is already taken. Lowercase, globally unique.
     AllowedPattern: "^[a-z0-9][a-z0-9-]{2,61}[a-z0-9]$"
   HostedZoneId:
     Type: String

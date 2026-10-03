@@ -49,12 +49,13 @@ aws cloudformation deploy \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides \
     PublicHost=chat.janus-soft.com \
-    GoogleClientId=YOUR_CLIENT_ID.apps.googleusercontent.com \
-    GoogleClientSecret=YOUR_CLIENT_SECRET \
-    AcmEmail=you@janus-soft.com \
-    BucketName=talent-chat-ACCOUNTID \
-    HostedZoneId=ZXXXXXXXX
+    AcmEmail=contact@janus-soft.com \
+    BucketName=janus-soft-jobs-chat \
+    DeployMode=dev \
+    InstanceType=t4g.medium
 ```
+
+The console form is pre-filled with the same values. Change a field only when you need a different one. Leave `HostedZoneId` empty.
 
 Leave `HostedZoneId` out if the DNS zone is not in this account. After the stack finishes, point an A record at the `PublicIp` output. Leave `www.janus-soft.com` on Google Sites. Caddy obtains the certificate once that name resolves to the instance. The stack waits up to 60 minutes for the image build, then signals success.
 
