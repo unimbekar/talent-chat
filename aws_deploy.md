@@ -47,6 +47,34 @@ Use an AWS CLI profile already on your machine (`aws configure`). Enable **Amazo
 
 Push the branch the instance will clone (`GitRef`, default `main`) before you create the stack. A private repo needs `GitTokenSecretArn`: a Secrets Manager secret whose value is the raw GitHub token.
 
+On **Configure stack options**, the **Permissions** field is the role CloudFormation assumes. Create it once in IAM, then select it there. The template still creates the EC2 instance role. On the review page, also check **I acknowledge that AWS CloudFormation might create IAM resources with custom names.**
+
+In IAM, choose **Roles → Create role → Custom trust policy**. Name it `janus-soft-cloudformation`. Attach **AdministratorAccess** while you are on `DeployMode=dev`. That managed policy already includes the Git sync actions. The trust policy lets both a normal stack deploy and GitHub sync assume the role:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "StackDeploy",
+      "Effect": "Allow",
+      "Principal": { "Service": "cloudformation.amazonaws.com" },
+      "Action": "sts:AssumeRole"
+    },
+    {
+      "Sid": "CfnGitSyncTrustPolicy",
+      "Effect": "Allow",
+      "Principal": { "Service": "cloudformation.sync.codeconnections.amazonaws.com" },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+```
+
+On the Git sync page, choose **Existing IAM role** and select `janus-soft-cloudformation`. The dropdown stays empty until this trust policy is saved. Connect the GitHub repo in CodeConnections first, on branch `main`, with the template path `deploy/cloudformation.yml`.
+
+For the CLI, add `--role-arn arn:aws:iam::ACCOUNT_ID:role/janus-soft-cloudformation` to the deploy command.
+
 ```bash
 aws cloudformation deploy \
   --region us-east-1 \

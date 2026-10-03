@@ -271,10 +271,10 @@ Resources:
       Name: !Sub talent-chat/${AWS::StackName}/google
       Description: Google OAuth client for @janus-soft.com recruiter sign-in and Drive read.
       RecoveryWindowInDays: !If [IsProd, 30, 0]
-      SecretString:
-        Fn::ToJsonString:
-          client_id: !Ref GoogleClientId
-          client_secret: !Ref GoogleClientSecret
+      SecretString: !Sub
+        - '{"client_id":"${ClientId}","client_secret":"${ClientSecret}"}'
+        - ClientId: !Ref GoogleClientId
+          ClientSecret: !Ref GoogleClientSecret
 
   AppRole:
     Type: AWS::IAM::Role
