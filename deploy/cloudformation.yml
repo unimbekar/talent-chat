@@ -3,8 +3,8 @@ Description: >
   Janus Soft public job chat at chat.janus-soft.com. One Graviton instance in
   us-east-1, a private S3 bucket with an inbox prefix, and the Google OAuth
   client secret for @janus-soft.com recruiter sign-in. DeployMode dev lets
-  CloudFormation delete the instance, the bucket, and both secrets immediately.
-  DeployMode prod keeps them. The instance clones the git repo and runs
+  CloudFormation delete the instance, the bucket, and both secrets with the
+  stack. DeployMode prod keeps them. The instance clones the git repo and runs
   docker-compose.prod.yml. Do not put AWS access keys in this template.
 
 Metadata:
@@ -127,9 +127,8 @@ Parameters:
       - prod
     Description: >
       dev deletes the instance, the bucket, and both secrets when the stack is
-      deleted. Secrets are removed immediately, with no 30-day recovery window.
-      prod keeps the instance, the bucket, and both secrets, and a deleted
-      secret can be restored for 30 days.
+      deleted. A deleted secret name stays reserved for 30 days until you
+      force-delete it. prod keeps the instance, the bucket, and both secrets.
   InstanceType:
     Type: String
     Default: t4g.medium
@@ -258,7 +257,6 @@ Resources:
     Properties:
       Name: !Sub talent-chat/${AWS::StackName}
       Description: Recruiter password, session secret, and database passwords. Written by the instance on first boot.
-      RecoveryWindowInDays: !If [IsProd, 30, 0]
       GenerateSecretString:
         PasswordLength: 32
         ExcludePunctuation: true
@@ -270,7 +268,6 @@ Resources:
     Properties:
       Name: !Sub talent-chat/${AWS::StackName}/google
       Description: Google OAuth client for @janus-soft.com recruiter sign-in and Drive read.
-      RecoveryWindowInDays: !If [IsProd, 30, 0]
       SecretString: !Sub
         - '{"client_id":"${ClientId}","client_secret":"${ClientSecret}"}'
         - ClientId: !Ref GoogleClientId
@@ -502,7 +499,7 @@ Outputs:
   InstanceId:
     Value: !Ref AppInstance
   DeployMode:
-    Description: dev deletes secrets immediately. prod keeps the instance, the bucket, and both secrets.
+    Description: dev deletes the instance, the bucket, and both secrets with the stack. prod keeps them.
     Value: !Ref DeployMode
   InstanceType:
     Description: Graviton size used for this stack. A larger size is a stack update that replaces the instance.

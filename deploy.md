@@ -33,7 +33,7 @@ Embeddings stay in-process FastEmbed. They do not move to Bedrock.
 
 ## Deploy with CloudFormation
 
-[deploy/cloudformation.yml](deploy/cloudformation.yml) creates the network, the private bucket, the instance role, two Secrets Manager secrets, and one Graviton instance (`InstanceType`, default `t4g.medium`). On first boot the instance clones the git repo and runs [deploy/bootstrap.sh](deploy/bootstrap.sh), which writes `.env`, builds the images, and installs the nightly backup cron. `DeployMode=dev` deletes those secrets immediately with the stack. `DeployMode=prod` keeps the instance, the bucket, and the secrets.
+[deploy/cloudformation.yml](deploy/cloudformation.yml) creates the network, the private bucket, the instance role, two Secrets Manager secrets, and one Graviton instance (`InstanceType`, default `t4g.medium`). On first boot the instance clones the git repo and runs [deploy/bootstrap.sh](deploy/bootstrap.sh), which writes `.env`, builds the images, and installs the nightly backup cron. `DeployMode=dev` deletes those secrets with the stack. The secret names stay reserved for 30 days unless you force-delete them. `DeployMode=prod` keeps the instance, the bucket, and the secrets.
 
 Use an AWS CLI profile on your own machine (`aws configure`, or a profile you already trust). Do not paste an access key, secret key, or session token into chat, into `.env`, or into the template. The instance uses its IAM role. There is no long-lived key on the box.
 

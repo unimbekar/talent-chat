@@ -39,7 +39,7 @@ A quiet month is about **$30–40** before Bedrock. With normal recruiter use of
 - Do not enable Bedrock provisioned throughput. On-demand Nova Lite matches this volume.
 - Do not turn on S3 versioning.
 - Delete `dumps/` yourself only if you need the space sooner. The lifecycle rule already removes them after 14 days, and incomplete multipart uploads are aborted after 7 days.
-- `DeployMode=dev` deletes the instance, the bucket, and both secrets with the stack. Secrets go immediately, with no 30-day name lock. A non-empty bucket still blocks that delete until you empty it.
+- `DeployMode=dev` deletes the instance, the bucket, and both secrets with the stack. A deleted secret name stays reserved for 30 days until you force-delete it. A non-empty bucket still blocks that delete until you empty it.
 - `DeployMode=prod` keeps the instance, the bucket, and both secrets. A secret deleted by hand can be restored for 30 days. The root disk stays if the instance is terminated. That is the setting for the site you intend to keep.
 - A one-year Compute Savings Plan on the instance type you actually run is the next discount, after the site has stayed up for a month. It is not required to launch.
 

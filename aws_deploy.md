@@ -91,7 +91,16 @@ aws cloudformation deploy \
 
 In the CloudFormation console those values are already filled in, including `DeployMode=dev` and `InstanceType=t4g.medium`. Review the form and change a field only when you need a different value. Add `GoogleClientId` and `GoogleClientSecret` when the OAuth client exists. Leave both empty until then.
 
-`DeployMode=dev` is the default. CloudFormation deletes the instance, the bucket, and both secrets with the stack, and the secrets are removed immediately. There is no 30-day recovery window. A non-empty bucket cannot be deleted; empty `inbox/`, `originals/`, and `dumps/` first.
+`DeployMode=dev` is the default. CloudFormation deletes the instance, the bucket, and both secrets with the stack. Secrets Manager still reserves a deleted secret name for 30 days. Before you create the stack again with the same names, run:
+
+```bash
+aws secretsmanager delete-secret --region us-east-1 \
+  --secret-id talent-chat/STACK_NAME --force-delete-without-recovery
+aws secretsmanager delete-secret --region us-east-1 \
+  --secret-id talent-chat/STACK_NAME/google --force-delete-without-recovery
+```
+
+A non-empty bucket cannot be deleted; empty `inbox/`, `originals/`, and `dumps/` first.
 
 Set `DeployMode=prod` only for the stack you intend to keep. Prod keeps the instance, the bucket, and both secrets if the stack is deleted. A secret that is deleted by hand can be restored for 30 days. The prod root disk is also kept if the instance is terminated.
 
@@ -175,7 +184,7 @@ There is no load balancer and no NAT gateway. Caddy on the instance is the only 
 | `AppInstance` | EC2 | `InstanceType`, default `t4g.medium`, Amazon Linux 2023 arm64, IMDSv2, hop limit 2, 30 GB gp3 encrypted. Deleted with the stack in dev. Kept in prod. A size change replaces it |
 | `AppRole` | IAM role | Nova Lite, the app secret, the Google secret, and S3 under `originals/`, `dumps/`, and `inbox/` |
 | `FilesBucket` | S3 | Private, SSE-S3, TLS required. `dumps/` expires after 14 days. Deleted with the stack in dev, if the bucket is empty. Kept in prod |
-| `AppSecret` | Secrets Manager | Recruiter password and database passwords. Dev: deleted immediately. Prod: kept, and a manual delete has a 30-day recovery window |
+| `AppSecret` | Secrets Manager | Recruiter password and database passwords. Dev: deleted with the stack, name reserved 30 days. Prod: kept |
 | `GoogleOAuthSecret` | Secrets Manager | `client_id` and `client_secret`. Same dev and prod rules as `AppSecret` |
 | `DnsRecord` | Route 53 A record | Only when `HostedZoneId` is set |
 

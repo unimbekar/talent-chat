@@ -10,7 +10,10 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 COPY api/pyproject.toml api/uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
-RUN python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='nomic-ai/nomic-embed-text-v1.5', cache_dir='/opt/fastembed')"
+RUN python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='nomic-ai/nomic-embed-text-v1.5', cache_dir='/opt/fastembed')" \
+    && mkdir -p /app/.cache \
+    && find /opt/fastembed -name tokenizer.json -exec cp {} /app/.cache/tokenizer.json \; \
+    && test -s /app/.cache/tokenizer.json
 RUN apt-get update \
     && apt-get install -y --no-install-recommends antiword \
     && rm -rf /var/lib/apt/lists/*
@@ -19,7 +22,6 @@ COPY api/alembic ./alembic
 COPY api/alembic.ini ./alembic.ini
 COPY api/pyproject.toml api/uv.lock ./
 COPY configs /app/configs
-COPY api/.cache/tokenizer.json /app/.cache/tokenizer.json
 RUN uv sync --frozen --no-dev
 COPY api/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

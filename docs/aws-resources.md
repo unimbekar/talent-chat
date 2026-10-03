@@ -20,7 +20,7 @@ Diagram sources are in [docs/diagrams/](diagrams/). The pictures below are rende
 | `AppEip`, `AppEipAssociation` | Elastic IP | A stable address for the `chat` DNS record. Free while it is attached to this running instance |
 | `InstanceProfile`, `AppRole` | IAM role | Nova Lite, the two secrets, and S3 under `inbox/`, `originals/`, and `dumps/`. Also Session Manager |
 | `FilesBucket`, `FilesBucketPolicy` | S3 bucket | Private, SSE-S3, public access blocked, TLS required. `dumps/` expires after 14 days. Incomplete multipart uploads abort after 7 days. Dev deletes it with the stack when it is empty. Prod keeps it |
-| `AppSecret` | Secrets Manager | Database passwords and the break-glass recruiter password. Written on first boot. Dev deletes it immediately (`RecoveryWindowInDays` 0). Prod keeps it, with a 30-day recovery window |
+| `AppSecret` | Secrets Manager | Database passwords and the break-glass recruiter password. Written on first boot. Dev deletes it with the stack. The name stays reserved for 30 days. Prod keeps it |
 | `GoogleOAuthSecret` | Secrets Manager | Google OAuth client id and secret. Same dev and prod rules as `AppSecret`. Not copied into instance user data |
 | `DnsRecord` | Route 53 A record | Created only when `HostedZoneId` is set. Janus Soft DNS stays where it is, so leave this empty |
 
