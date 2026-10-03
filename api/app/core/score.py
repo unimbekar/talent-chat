@@ -1,5 +1,6 @@
 """Score math. Hard filters and scores are code, not a prompt."""
 
+from functools import lru_cache
 import re
 
 from app.core.clearance import clearance_flag
@@ -170,7 +171,8 @@ _LINE_FILLER = frozenset(
 )
 
 
-def _stems(text: str) -> set[str]:
+@lru_cache(maxsize=4096)
+def _stems(text: str) -> frozenset[str]:
     expanded = re.sub(r"(?i)\bb\.s\.?\b", "bachelor degree", text or "")
     expanded = re.sub(r"(?i)\bm\.s\.?\b", "master degree", expanded)
     expanded = re.sub(r"(?i)\bph\.d\.?\b", "doctorate degree", expanded)
@@ -187,7 +189,7 @@ def _stems(text: str) -> set[str]:
         if stem in _LINE_FILLER or len(stem) < 3:
             continue
         stems.add(stem)
-    return stems
+    return frozenset(stems)
 
 
 _DEGREE_GENERIC = frozenset(

@@ -6,7 +6,12 @@ import { useParams, useRouter } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/back-button";
 import { CandidateMailBar, copyText, selectedEmails, shown } from "@/components/candidate-mail";
+import { Download } from "lucide-react";
+
+import { downloadCsv, percent } from "@/lib/csv";
+import { readCache, writeCache } from "@/lib/page-cache";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -58,6 +63,7 @@ export default function JobDetailPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [candidates, setCandidates] = useState<JobCandidate[]>([]);
+  const [candidatesLoaded, setCandidatesLoaded] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [copiedSel, setCopiedSel] = useState(false);
   const [copyNote, setCopyNote] = useState("");
@@ -65,6 +71,21 @@ export default function JobDetailPage() {
   const [closing, setClosing] = useState(false);
 
   useEffect(() => {
+    function showJob(data: JobDetail) {
+      setJob(data);
+      setLocation(data.location || "");
+      setClearance(data.clearance_required || "");
+      setMust(postedSkills(data.must_have_quotes, data.must_have_skills));
+      setDesired(postedSkills(data.nice_to_have_quotes, data.nice_to_have_skills));
+      setReplacement(adminDescription(data));
+    }
+    const savedJob = readCache<JobDetail>(`talent-job:${code}`);
+    if (savedJob) showJob(savedJob);
+    const savedCandidates = readCache<JobCandidate[]>(`talent-job-candidates:${code}`);
+    if (savedCandidates) {
+      setCandidates(savedCandidates);
+      setCandidatesLoaded(true);
+    }
     fetch(`/api/admin/jobs/${code}`).then(async (response) => {
       if (response.status === 401) {
         router.push("/admin/login");
@@ -74,20 +95,20 @@ export default function JobDetailPage() {
         setError("Job not found.");
         return;
       }
-      const data = (await response.json()) as JobDetail;
-      setJob(data);
-      setLocation(data.location || "");
-      setClearance(data.clearance_required || "");
-      setMust(postedSkills(data.must_have_quotes, data.must_have_skills));
-      setDesired(postedSkills(data.nice_to_have_quotes, data.nice_to_have_skills));
-      setReplacement(adminDescription(data));
+      showJob((await response.json()) as JobDetail);
     });
     fetch(`/api/admin/jobs/${code}/candidates`).then(async (response) => {
       if (!response.ok) return;
       const data = await response.json();
       setCandidates(data.candidates || []);
+      setCandidatesLoaded(true);
+      writeCache(`talent-job-candidates:${code}`, data.candidates || []);
     });
   }, [code, router]);
+
+  useEffect(() => {
+    if (job) writeCache(`talent-job:${code}`, job);
+  }, [job, code]);
 
   function toggle(id: string) {
     setCopiedSel(false);
@@ -221,11 +242,14 @@ export default function JobDetailPage() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <Link href="/admin/jobs" className="text-sm text-pine underline">
-            All jobs
-          </Link>
+          <div className="flex items-center gap-4">
+            <BackButton fallback="/admin/jobs" />
+            <Link href="/admin/jobs" className="text-sm text-pine underline">
+              All jobs
+            </Link>
+          </div>
           <p className="mt-2 font-mono text-sm text-pine">{job.requisition_code}</p>
-          <h1 className="font-serif text-3xl">{job.title}</h1>
+          <h1 className="page-title">{job.title}</h1>
           <p className="text-sm text-ink/70">
             {job.location} · {job.status} · {job.description_source}
           </p>
@@ -234,9 +258,9 @@ export default function JobDetailPage() {
       </div>
 
       {job.status !== "closed" ? (
-        <form onSubmit={closeJob} className="rounded-xl border border-line bg-card p-4">
+        <form onSubmit={closeJob} className="panel p-4">
           <h2 className="font-serif text-xl">Close this job</h2>
-          <p className="mt-1 text-sm text-ink/70">It moves to the closed list on the jobs page. A later recrawl will not open it again.</p>
+          <p className="page-lead">It moves to the closed list on the jobs page. A later recrawl will not open it again.</p>
           <label className="mt-3 block text-sm">
             Why is it closing?
             <Textarea value={closeNote} onChange={(event) => setCloseNote(event.target.value)} rows={3} className="mt-1" required />
@@ -246,7 +270,7 @@ export default function JobDetailPage() {
           </Button>
         </form>
       ) : (
-        <section className="rounded-xl border border-line bg-card p-4">
+        <section className="panel p-4">
           <h2 className="font-serif text-xl">Closed</h2>
           <p className="mt-2 text-sm leading-6">{job.close_note || "No note was saved."}</p>
           <Button type="button" variant="outline" className="mt-3" disabled={closing} onClick={reopenJob}>
@@ -255,9 +279,9 @@ export default function JobDetailPage() {
         </section>
       )}
 
-      <section id="candidates" className="scroll-mt-6 rounded-xl border border-line bg-card p-4">
+      <section id="candidates" className="scroll-mt-6 panel p-4">
         <h2 className="font-serif text-xl">Matching candidates</h2>
-        <p className="mt-1 text-sm text-ink/70">Résumés that cover at least 50% of the mandatory lines. A strong match covers at least 90%.</p>
+        <p className="page-lead">Résumés that cover at least 50% of the mandatory lines. A strong match covers at least 90%.</p>
         <CandidateMailBar
           total={candidates.length}
           selectedCount={selected.size}
@@ -267,8 +291,44 @@ export default function JobDetailPage() {
           copied={copiedSel}
           note={copyNote}
         />
+        <div className="mt-2 flex flex-wrap gap-2">
+          {selected.size > 0 && (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => router.push(`/admin/review?job=${job.requisition_code}&candidates=${[...selected].join(",")}`)}
+            >
+              Review {selected.size} selected
+            </Button>
+          )}
+          {candidates.length > 0 && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                downloadCsv(
+                  `matches-${job.requisition_code}.csv`,
+                  ["Name", "Email", "Location", "Mandatory", "Desired", "Strong match", "File"],
+                  candidates.map((candidate) => [
+                    candidate.full_name,
+                    candidate.email,
+                    candidate.location,
+                    percent(candidate.mandatory_pct),
+                    percent(candidate.desired_pct),
+                    candidate.meets_bar ? "yes" : "no",
+                    candidate.original_filename,
+                  ]),
+                )
+              }
+            >
+              <Download /> Export CSV
+            </Button>
+          )}
+        </div>
         <div className="mt-3 flex flex-col gap-2">
-          {candidates.length === 0 && <p className="text-sm text-ink/60">No résumé covers at least 50% of the mandatory lines.</p>}
+          {!candidatesLoaded && <p className="text-sm text-ink/60">Scoring résumés against this job…</p>}
+          {candidatesLoaded && candidates.length === 0 && <p className="text-sm text-ink/60">No résumé covers at least 50% of the mandatory lines.</p>}
           {candidates.map((candidate) => (
             <article key={candidate.id} className={`rounded-lg border px-3 py-3 ${candidate.meets_bar ? "border-pine" : "border-line"}`}>
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -305,7 +365,7 @@ export default function JobDetailPage() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-line bg-card p-4">
+      <section className="panel p-4">
         <h2 className="font-serif text-xl">Description</h2>
         {job.description_note && <p className="mt-2 text-sm">{job.description_note}</p>}
         <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{job.description_text || "No description on file."}</p>

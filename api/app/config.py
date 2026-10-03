@@ -31,8 +31,21 @@ class Settings(BaseSettings):
 
     company_name: str = "Janus Soft Inc."
     careers_url: str = "https://www.janus-soft.com/career"
+    # Branding for a customer deployment. The web app reads these from GET /public/config.
+    brand_tagline: str = "Find the role that fits you"
+    brand_accent: str = "#857251"
+    brand_logo_url: str = "/brand/logo.svg"
+    brand_hero_url: str = "/brand/hero.webp"
+    brand_footer: str = (
+        "This tool is not authorized for classified processing and is not a FedRAMP system; "
+        "do not upload classified documents or CUI."
+    )
+    chat_examples: str = "Java, Python, and AWS jobs|Jobs in Chantilly|Do any roles need a clearance?"
+    company_email_domain: str = "janus-soft.com"
+    resume_library_host: str = "/mnt/synology/janus-soft"
     crawl_interval_hours: float = 6
     crawl_on_start: bool = False
+    warm_resume_cache: bool = True
     crawl_request_delay_seconds: float = 1.0
     public_frame_ancestor: str = ""
     trusted_proxy_header: str = ""

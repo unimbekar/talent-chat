@@ -2,14 +2,24 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --brand: 133 114 81;
+  --brand-deep: 104 89 63;
+  --brand-soft: 216 197 156;
+}
+
 html,
 body {
-  background: #f6f4ef;
-  color: #1c2430;
+  background: #f7f4ee;
+  color: #1f1d1a;
 }
 
 body {
   overflow-x: hidden;
+}
+
+::selection {
+  background: rgb(var(--brand) / 0.22);
 }
 
 @keyframes work-slide {
@@ -18,5 +28,20 @@ body {
   }
   100% {
     transform: translateX(320%);
+  }
+}
+
+@layer components {
+  .page-title {
+    @apply font-serif text-3xl tracking-tight text-ink;
+  }
+  .page-lead {
+    @apply mt-1 max-w-2xl text-sm leading-6 text-ink/65;
+  }
+  .panel {
+    @apply rounded-2xl border border-line bg-card shadow-card;
+  }
+  .field {
+    @apply w-full rounded-lg border border-line bg-card px-3 py-2 text-sm text-ink shadow-sm outline-none transition placeholder:text-ink/40 focus:border-pine/60 focus:ring-4 focus:ring-pine/15;
   }
 }

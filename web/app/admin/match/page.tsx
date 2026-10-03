@@ -4,7 +4,9 @@ import { FormEvent, Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
+import { BackButton } from "@/components/back-button";
 import { Badge } from "@/components/ui/badge";
+import { readCache, writeCache } from "@/lib/page-cache";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -84,6 +86,11 @@ function MatchPage() {
     if (!candidateId) return;
     const generation = ++loadGeneration.current;
     let cancelled = false;
+    const saved = readCache<{ profile: Profile; matches: MatchRow[] }>(`talent-resume:${candidateId}`);
+    if (saved) {
+      setProfile(saved.profile);
+      setMatches(saved.matches);
+    }
     fetch(`/api/admin/resumes/${candidateId}`).then(async (response) => {
       if (cancelled || generation !== loadGeneration.current) return;
       if (response.status === 401) {
@@ -103,6 +110,10 @@ function MatchPage() {
       cancelled = true;
     };
   }, [candidateId]);
+
+  useEffect(() => {
+    if (profile && profile.id === candidateId) writeCache(`talent-resume:${candidateId}`, { profile, matches });
+  }, [profile, matches, candidateId]);
 
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -227,12 +238,10 @@ function MatchPage() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <h1 className="font-serif text-2xl">Match a résumé</h1>
-        <Link href="/admin/find" className="text-sm text-pine underline-offset-2 hover:underline">
-          Back to find
-        </Link>
+        <h1 className="page-title">Match a résumé</h1>
+        <BackButton fallback="/admin/find" />
       </div>
-      <form onSubmit={upload} className="flex flex-col gap-3 rounded-lg border border-line bg-card p-4 sm:flex-row sm:items-end">
+      <form onSubmit={upload} className="flex flex-col gap-3 panel p-4 sm:flex-row sm:items-end">
         <label className="flex-1 text-sm">
           PDF, DOC, DOCX, or TXT
           <Input

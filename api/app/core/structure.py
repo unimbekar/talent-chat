@@ -1,6 +1,8 @@
 """Turn parser output plus one model call into a stored profile."""
 
+import copy
 import re
+from functools import lru_cache
 
 from app.core.clearance import (
     CLEARANCE_ORDER,
@@ -42,7 +44,11 @@ _YEARS = re.compile(
 
 def resume_facts(text: str) -> dict:
     """Read contact fields, skills, and a short summary straight from résumé text."""
-    raw = text or ""
+    return copy.deepcopy(_resume_facts(text or ""))
+
+
+@lru_cache(maxsize=2048)
+def _resume_facts(raw: str) -> dict:
     lines = [line.strip() for line in raw.splitlines() if line.strip()]
     email_match = _EMAIL.search(raw)
     phone_match = _PHONE.search(raw)

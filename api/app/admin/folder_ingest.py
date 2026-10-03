@@ -395,8 +395,10 @@ def library_folder(raw: str, *, default: Path) -> Path:
             raise ValueError("No résumé folder is configured.")
         return default.resolve()
 
-    host_prefix = "/mnt/synology/janus-soft"
-    if text == host_prefix or text.startswith(host_prefix + "/"):
+    from app.config import get_settings
+
+    host_prefix = get_settings().resume_library_host.strip().rstrip("/")
+    if host_prefix and (text == host_prefix or text.startswith(host_prefix + "/")):
         text = "/library" + text[len(host_prefix) :]
 
     roots = []
@@ -417,7 +419,7 @@ def library_folder(raw: str, *, default: Path) -> Path:
 
     candidate = Path(text).resolve()
     if not any(_within(candidate, root) for root in roots):
-        raise ValueError("Choose a folder inside the résumé library, such as /mnt/synology/janus-soft/Candidates.")
+        raise ValueError(f"Choose a folder inside the résumé library, such as {host_prefix or '/library'}/Candidates.")
     if not candidate.is_dir():
         raise ValueError(f"No folder was found at {raw.strip()}.")
     return candidate

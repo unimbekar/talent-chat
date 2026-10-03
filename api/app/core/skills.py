@@ -1,6 +1,7 @@
 """Skill synonym table. One alias may map to several canonical names."""
 
 import re
+from functools import lru_cache
 
 # (alias, canonical). Matching is case-insensitive on word boundaries.
 SEED_SYNONYMS: list[tuple[str, str]] = [
@@ -195,6 +196,7 @@ _TOOL_STOP = {
 }
 
 
+@lru_cache(maxsize=None)
 def _pattern(alias: str) -> re.Pattern[str]:
     return re.compile(rf"(?<!\w){re.escape(alias)}(?!\w)", re.I)
 
@@ -250,9 +252,17 @@ def tools_and_languages(text: str, allow_unknown: bool = False) -> list[str]:
     """Keep tools and languages named in text. Drop dates, duties, and other prose."""
     if not text or not text.strip():
         return []
+    return list(_tools_and_languages(text, allow_unknown))
+
+
+_CATALOG_LONGEST_FIRST = sorted(TOOL_CATALOG, key=lambda row: len(row[0]), reverse=True)
+
+
+@lru_cache(maxsize=8192)
+def _tools_and_languages(text: str, allow_unknown: bool) -> tuple[str, ...]:
     found: list[str] = []
     seen: set[str] = set()
-    catalog = sorted(TOOL_CATALOG, key=lambda row: len(row[0]), reverse=True)
+    catalog = _CATALOG_LONGEST_FIRST
     for piece in re.split(r"[\n,;|•·]+", text):
         token = piece.strip(" .")
         if not token:
@@ -285,7 +295,7 @@ def tools_and_languages(text: str, allow_unknown: bool = False) -> list[str]:
         if key not in seen:
             seen.add(key)
             found.append(token)
-    return found
+    return tuple(found)
 
 
 def skills_from_quotes(quotes: list[str], rows: list[tuple[str, str]] | None = None) -> list[str]:

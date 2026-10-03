@@ -24,7 +24,23 @@ type Notice = { tone: "error" | "info" | "ok"; text: string };
 
 export default function IngestPage() {
   const router = useRouter();
-  const [path, setPath] = useState("/mnt/synology/janus-soft/Candidates");
+  const [library, setLibrary] = useState("/library");
+  const [path, setPath] = useState("");
+
+  useEffect(() => {
+    fetch("/api/admin/overview").then(async (response) => {
+      if (response.status === 401) {
+        router.push("/admin/login");
+        return;
+      }
+      if (!response.ok) return;
+      const data = await response.json();
+      if (data.library_host) {
+        setLibrary(data.library_host);
+        setPath((current) => current || `${data.library_host}/Candidates`);
+      }
+    });
+  }, [router]);
   const [scan, setScan] = useState<Scan | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -147,13 +163,13 @@ export default function IngestPage() {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="font-serif text-3xl">Ingest résumés</h1>
-        <p className="mt-1 max-w-2xl text-sm text-ink/70">
+        <h1 className="page-title">Ingest résumés</h1>
+        <p className="page-lead">
           Point at a folder on the résumé library. The import keeps the newest PDF, DOC, DOCX, or TXT for each person. Offer letters and invoices stay out. Nothing is emailed.
         </p>
       </div>
 
-      <form onSubmit={checkFolder} className="rounded-xl border border-line bg-card p-4">
+      <form onSubmit={checkFolder} className="panel p-4">
         <label className="block text-sm">
           Folder
           <Input
@@ -162,15 +178,13 @@ export default function IngestPage() {
               setPath(event.target.value);
               setScan(null);
             }}
-            placeholder="/mnt/synology/janus-soft/Candidates"
+            placeholder={`${library}/Candidates`}
             className="mt-1 font-mono"
             aria-label="Folder"
             autoComplete="off"
           />
         </label>
-        <p className="mt-2 text-xs text-ink/60">
-          A full path such as /mnt/synology/janus-soft/Resume-Refined, or a short name such as Upender under Candidates.
-        </p>
+        <p className="mt-2 text-xs text-ink/60">A full path inside {library}, or the short name of a folder under Candidates.</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Button type="submit" variant="outline" disabled={checking || progress?.running}>
             {checking ? "Checking…" : "Check folder"}
@@ -184,7 +198,7 @@ export default function IngestPage() {
       {notice && <Notice tone={notice.tone} text={notice.text} />}
 
       {scan && (
-        <section className="rounded-xl border border-line bg-card p-4 text-sm">
+        <section className="panel p-4 text-sm">
           <p>
             {scan.people} people · {scan.older} older copies left out · {scan.ignored} other files skipped
           </p>

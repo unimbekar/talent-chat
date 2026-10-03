@@ -24,11 +24,12 @@ _EMAIL = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 
 
 def _sibling_email(folder: Path, item) -> str | None:
+    domain = get_settings().company_email_domain.strip().lower().lstrip("@")
     for relative in item.older:
         path = folder / relative
         text = _read_resume(path)
         for email in _EMAIL.findall(text):
-            if not email.lower().endswith("@janus-soft.com"):
+            if not domain or not email.lower().endswith(f"@{domain}"):
                 return email
     return None
 

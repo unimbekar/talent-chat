@@ -7,6 +7,7 @@ os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://app_admin:admin@127.
 os.environ.setdefault("DATABASE_PUBLIC_URL", "postgresql+psycopg://app_public:public@127.0.0.1:5432/talent_test")
 os.environ.setdefault("DATABASE_MIGRATE_URL", "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/talent_test")
 os.environ.setdefault("CRAWL_ON_START", "false")
+os.environ.setdefault("WARM_RESUME_CACHE", "false")
 os.environ.setdefault("SESSION_SECRET", "test-session-secret")
 os.environ.setdefault("FILE_DIR", "/tmp/talent-chat-test-uploads")
 os.environ["ADMIN_PASSWORD_HASH"] = ""

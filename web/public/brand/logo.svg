@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Janus Soft">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d8c59c"/>
+      <stop offset="1" stop-color="#857251"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#1d1c1a"/>
+  <path d="M30 14c-9 0-15 7.6-15 18s6 18 15 18" fill="none" stroke="url(#g)" stroke-width="4" stroke-linecap="round"/>
+  <path d="M34 14c9 0 15 7.6 15 18s-6 18-15 18" fill="none" stroke="url(#g)" stroke-width="4" stroke-linecap="round"/>
+  <path d="M15.5 31l-3.5 3 3.5 1.5M48.5 31l3.5 3-3.5 1.5" fill="none" stroke="url(#g)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M32 18v28" stroke="#857251" stroke-width="2" stroke-linecap="round" opacity=".7"/>
+  <circle cx="24" cy="27" r="2" fill="#d8c59c"/>
+  <circle cx="40" cy="27" r="2" fill="#d8c59c"/>
+</svg>

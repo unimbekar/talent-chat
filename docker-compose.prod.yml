@@ -41,7 +41,7 @@ services:
       AWS_REGION: us-east-1
       S3_BUCKET: ${S3_BUCKET:?set S3_BUCKET}
       SESSION_SECURE: "true"
-      TRUSTED_PROXY_HEADER: X-Forwarded-For
+      TRUSTED_PROXY_HEADER: ${TRUSTED_PROXY_HEADER:-X-Forwarded-For}
       PUBLIC_FRAME_ANCESTOR: ${PUBLIC_FRAME_ANCESTOR:-https://www.janus-soft.com}
     volumes:
       - ./secrets/admin_password_hash:/run/secrets/admin_password_hash:ro

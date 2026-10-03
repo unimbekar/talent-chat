@@ -185,18 +185,18 @@ export default function CandidatesPage() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-serif text-3xl">Candidates</h1>
-          <p className="mt-1 text-sm text-ink/70">Latest résumé on file for each person. Confirm a profile from Match when you want job scores.</p>
+          <h1 className="page-title">Candidates</h1>
+          <p className="page-lead">Latest résumé on file for each person. Confirm a profile from Match when you want job scores.</p>
         </div>
         <p className="text-sm text-ink/60">{total === 0 ? "No one on file yet" : `${total} on file`}</p>
       </div>
 
-      <section className="rounded-xl border border-line bg-card p-4">
+      <section className="panel p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="font-serif text-xl">Import from the Candidates folder</h2>
             <p className="mt-1 max-w-2xl text-sm text-ink/70">
-              Reads the Synology folder and keeps the newest PDF, DOC, DOCX, or TXT for each person. Older copies, offer letters, and invoices stay out.
+              Reads the mounted résumé folder and keeps the newest PDF, DOC, DOCX, or TXT for each person. Older copies, offer letters, and invoices stay out.
             </p>
           </div>
           <div className="flex gap-2">
@@ -317,7 +317,7 @@ export default function CandidatesPage() {
       </div>
       {error && <p className="text-sm text-red-700">{error}</p>}
 
-      <div className="overflow-hidden rounded-xl border border-line bg-card">
+      <div className="overflow-hidden panel">
         {screen && screen.candidates.length === 0 ? (
           <p className="px-4 py-8 text-sm text-ink/70">{query ? "No candidate matches that search." : "Import the folder, or upload one résumé from Match."}</p>
         ) : (

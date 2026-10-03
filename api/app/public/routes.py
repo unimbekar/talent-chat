@@ -28,6 +28,14 @@ _LIMIT = 30
 class ChatIn(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
     prior_codes: list[str] = Field(default_factory=list)
+    # False returns the job cards at once and leaves the paragraph to POST /public/explain.
+    explain: bool = True
+
+
+class ExplainIn(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+    prior_codes: list[str] = Field(default_factory=list, max_length=48)
+    codes: list[str] = Field(min_length=1, max_length=24)
 
 
 def _client_ip(request: Request) -> str:
@@ -57,7 +65,16 @@ def reset_rate_limit() -> None:
 @router.get("/config")
 def public_config() -> dict:
     settings = get_settings()
-    return {"company_name": settings.company_name, "careers_url": settings.careers_url}
+    return {
+        "company_name": settings.company_name,
+        "careers_url": settings.careers_url,
+        "tagline": settings.brand_tagline,
+        "accent": settings.brand_accent,
+        "logo_url": settings.brand_logo_url,
+        "hero_url": settings.brand_hero_url,
+        "footer": settings.brand_footer,
+        "examples": [item.strip() for item in settings.chat_examples.split("|") if item.strip()],
+    }
 
 
 @router.post("/chat")
@@ -95,10 +112,13 @@ def chat(body: ChatIn, request: Request):
         codes = [card["requisition_code"] for card in cards]
         notice = None
         answer = ""
+        explain_pending = False
         if not cards:
             answer = "No open jobs matched that search."
         elif result.parsed and (result.parsed.ask_clearance or result.parsed.ask_posting_fact):
             answer = _quote_only(result)
+        elif not body.explain:
+            explain_pending = True
         else:
             try:
                 answer = _explain(request, result, body.message)
@@ -111,9 +131,37 @@ def chat(body: ChatIn, request: Request):
             "refusal": False,
             "notice": notice,
             "answer": answer,
+            "explain_pending": explain_pending,
             "jobs": cards,
             "prior_codes": codes[:24],
         }
+    finally:
+        db.close()
+
+
+@router.post("/explain")
+def explain(body: ExplainIn, request: Request):
+    """The paragraph for cards already shown. Re-runs the same search so only those jobs are described."""
+    if is_refusal(body.message):
+        return {"answer": REFUSAL_TEXT, "notice": None}
+    if _limited(f"explain:{_client_ip(request)}"):
+        return JSONResponse({"answer": "", "notice": "Explanations are paused for this network. Please try again later."}, status_code=429)
+    db = public_session()
+    try:
+        try:
+            result = search_jobs(db, body.message, body.prior_codes, embedder=request.app.state.embedder)
+        except SQLAlchemyError:
+            return JSONResponse({"answer": "", "notice": "Explanations are unavailable right now."}, status_code=503)
+        wanted = set(body.codes)
+        result.hits = [hit for hit in result.hits if hit.job.requisition_code in wanted]
+        if not result.hits:
+            return {"answer": "", "notice": None}
+        try:
+            answer = drop_unknown_codes(_explain(request, result, body.message), wanted)
+        except LLMError as exc:
+            logger.warning("public explanation failed: %s", exc)
+            return {"answer": "", "notice": "Explanations are unavailable right now."}
+        return {"answer": answer, "notice": None}
     finally:
         db.close()
 

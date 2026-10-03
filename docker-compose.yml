@@ -42,6 +42,7 @@ services:
       CRAWL_ON_START: ${CRAWL_ON_START:-true}
       LOCATIONS_FILE: /app/configs/locations.yaml
       RESUME_FOLDER: /resumes
+      RESUME_LIBRARY_HOST: ${RESUME_LIBRARY_HOST:-/mnt/synology/janus-soft}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

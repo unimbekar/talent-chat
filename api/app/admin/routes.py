@@ -132,6 +132,65 @@ def logout(response: Response, session: Session = Depends(require_admin)):
     return {"ok": True}
 
 
+@router.get("/overview")
+def overview(session: Session = Depends(require_admin)):
+    """Counts and recent activity for the dashboard."""
+    from collections import Counter
+    from datetime import timedelta
+
+    from app.models import Candidate
+
+    def count(stmt) -> int:
+        return session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+
+    week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    open_jobs = select(Job).where(Job.status != "closed")
+    skills: Counter[str] = Counter()
+    for row in session.scalars(select(Candidate.skills)).all():
+        for item in row or []:
+            name = item.get("name") if isinstance(item, dict) else str(item)
+            if name:
+                skills[name] += 1
+    states = session.execute(
+        select(Candidate.state, func.count()).where(Candidate.state.is_not(None)).group_by(Candidate.state).order_by(func.count().desc()).limit(8)
+    ).all()
+    recent = session.scalars(select(Candidate).order_by(Candidate.created_at.desc()).limit(6)).all()
+    state = session.get(CrawlState, 1)
+    return {
+        "jobs": {
+            "open": count(open_jobs),
+            "closed": count(select(Job).where(Job.status == "closed")),
+            "needs_review": count(open_jobs.where(Job.needs_review.is_(True))),
+            "no_description": count(open_jobs.where(func.coalesce(Job.description_text, "") == "")),
+        },
+        "candidates": {
+            "total": count(select(Candidate)),
+            "ranked": count(select(Candidate).where(Candidate.status == "confirmed")),
+            "added_this_week": count(select(Candidate).where(Candidate.created_at >= week_ago)),
+            "no_location": count(select(Candidate).where(Candidate.state.is_(None))),
+        },
+        "crawl": {
+            "last_ok": None if state is None else state.last_ok,
+            "last_finished_at": None if state is None or state.last_finished_at is None else state.last_finished_at.isoformat(),
+            "last_rows": None if state is None else state.last_rows,
+            "last_error": None if state is None else state.last_error,
+        },
+        "top_skills": [{"name": name, "count": total} for name, total in skills.most_common(12)],
+        "top_states": [{"state": code, "count": total} for code, total in states],
+        "recent_candidates": [
+            {
+                "id": str(row.id),
+                "full_name": row.full_name or row.original_filename,
+                "location": row.location,
+                "title": (row.titles or [None])[0],
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            }
+            for row in recent
+        ],
+        "library_host": get_settings().resume_library_host,
+    }
+
+
 @router.get("/jobs")
 def list_jobs(session: Session = Depends(require_admin)):
     jobs = session.scalars(select(Job).order_by(Job.requisition_code)).all()
@@ -749,7 +808,8 @@ def get_resume(candidate_id: uuid.UUID, session: Session = Depends(require_admin
 
 def _company_email(email: str | None) -> bool:
     text = (email or "").strip().lower()
-    return not text or text.endswith("@janus-soft.com")
+    domain = get_settings().company_email_domain.strip().lower().lstrip("@")
+    return not text or bool(domain and text.endswith(f"@{domain}"))
 
 
 def _by_name(session: Session, name: str):

@@ -134,7 +134,7 @@ export default function JobsPage() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-serif text-2xl">Jobs</h1>
+        <h1 className="page-title">Jobs</h1>
         <Button type="button" onClick={recrawl} disabled={busy}>
           {busy ? "Recrawling…" : "Recrawl now"}
         </Button>
@@ -154,7 +154,7 @@ export default function JobsPage() {
         onChange={(event) => setQuery(event.target.value)}
         placeholder="Filter by code, title, or city"
         aria-label="Filter jobs"
-        className="w-full rounded-md border border-line bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-pine"
+        className="field"
       />
       <div className="overflow-x-auto rounded-lg border border-line bg-card">
         <table className="w-full min-w-[640px] text-left text-sm">

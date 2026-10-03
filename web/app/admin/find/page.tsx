@@ -9,6 +9,10 @@ import { CandidateMailBar, copyText, selectedEmails, shown } from "@/components/
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { ClipboardCheck, Download } from "lucide-react";
+
+import { downloadCsv } from "@/lib/csv";
+import { writeCache } from "@/lib/page-cache";
 
 type Person = {
   id: string;
@@ -65,9 +69,10 @@ export default function FindPage() {
     const raw = sessionStorage.getItem(STORAGE_KEY);
     if (raw) {
       try {
-        const saved = JSON.parse(raw) as { draft?: string; result?: Answer | null };
+        const saved = JSON.parse(raw) as { draft?: string; result?: Answer | null; selected?: string[] };
         if (saved.draft) setDraft(saved.draft);
         if (saved.result) setResult(saved.result);
+        if (saved.selected) setSelected(new Set(saved.selected));
       } catch {
         sessionStorage.removeItem(STORAGE_KEY);
       }
@@ -77,8 +82,8 @@ export default function FindPage() {
 
   useEffect(() => {
     if (!restored) return;
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ draft, result }));
-  }, [draft, result, restored]);
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ draft, result, selected: [...selected] }));
+  }, [draft, result, selected, restored]);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -109,6 +114,15 @@ export default function FindPage() {
     }
   }
 
+  function reviewSelected() {
+    const people = (result?.candidates || []).filter((person) => selected.has(person.id));
+    writeCache(
+      "talent-review-picked",
+      people.map((person) => ({ id: person.id, full_name: person.full_name, original_filename: null, email: person.email, location: person.location })),
+    );
+    router.push(`/admin/review?candidates=${people.map((person) => person.id).join(",")}`);
+  }
+
   function copyLabeled(value: string, label: string) {
     copyText(value);
     setCopied(label);
@@ -119,7 +133,7 @@ export default function FindPage() {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="font-serif text-3xl">Find candidates</h1>
+        <h1 className="page-title">Find candidates</h1>
         <p className="mt-1 max-w-2xl text-sm text-ink/70">
           Ask in plain words for a role, a skill, and where people live, such as ServiceNow people in Maryland, Software
           Testers, or Java developers outside Virginia. The filters used are shown above the list. Emails stay on this
@@ -168,6 +182,28 @@ export default function FindPage() {
             copied={copied === "selected"}
             note={copyNote}
           />
+          <div className="flex flex-wrap gap-2">
+            {result.candidates.some((person) => selected.has(person.id)) && (
+              <Button type="button" onClick={reviewSelected}>
+                <ClipboardCheck /> Review selected against a job
+              </Button>
+            )}
+            {result.candidates.length > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  downloadCsv(
+                    "find-results.csv",
+                    ["Name", "Email", "Location", "Titles", "Skills"],
+                    result.candidates.map((person) => [person.full_name, person.email, person.location, person.titles.join("; "), person.skills.join("; ")]),
+                  )
+                }
+              >
+                <Download /> Export CSV
+              </Button>
+            )}
+          </div>
           {result.filters && (
             <div className="flex flex-col gap-1.5">
               <div className="flex flex-wrap items-center gap-1.5">
@@ -192,7 +228,7 @@ export default function FindPage() {
               to include {result.unknown_location === 1 ? "it" : "them"}.
             </p>
           )}
-          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-card">
+          <ul className="divide-y divide-line overflow-hidden panel">
             {result.candidates.length === 0 && <li className="px-4 py-8 text-sm text-ink/70">No one on file matches all of those filters.</li>}
             {result.candidates.map((person) => (
               <li key={person.id} className="flex flex-col gap-2 px-4 py-3">

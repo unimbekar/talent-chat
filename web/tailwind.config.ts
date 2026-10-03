@@ -5,18 +5,31 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        desk: "#f6f4ef",
-        ink: "#1c2430",
+        desk: "#f7f4ee",
+        ink: "#1f1d1a",
+        night: "#151413",
+        // The accent comes from BRAND_ACCENT at run time, so one setting rebrands every button and link.
         pine: {
-          DEFAULT: "#1f4e3d",
-          deep: "#16382c",
+          DEFAULT: "rgb(var(--brand) / <alpha-value>)",
+          deep: "rgb(var(--brand-deep) / <alpha-value>)",
+          soft: "rgb(var(--brand-soft) / <alpha-value>)",
         },
-        card: "#fffcf7",
-        line: "#e4dfd4",
+        card: "#ffffff",
+        line: "#e7e1d6",
       },
       fontFamily: {
         serif: ["Iowan Old Style", "Palatino Linotype", "Palatino", "Georgia", "serif"],
-        sans: ["Segoe UI", "Helvetica Neue", "Arial", "sans-serif"],
+        sans: ["Inter", "Segoe UI", "system-ui", "-apple-system", "Helvetica Neue", "Arial", "sans-serif"],
+      },
+      boxShadow: {
+        card: "0 1px 2px rgb(31 29 26 / 0.04), 0 4px 16px -6px rgb(31 29 26 / 0.08)",
+        lift: "0 10px 30px -12px rgb(31 29 26 / 0.28)",
+      },
+      keyframes: {
+        "fade-up": { from: { opacity: "0", transform: "translateY(6px)" }, to: { opacity: "1", transform: "none" } },
+      },
+      animation: {
+        "fade-up": "fade-up 240ms ease-out both",
       },
     },
   },

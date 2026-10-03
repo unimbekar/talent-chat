@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+import threading
 import uuid
 
 from fastapi import FastAPI, Request
@@ -42,6 +43,21 @@ def _crawl_once() -> None:
         session.close()
 
 
+def _warm_resume_cache() -> None:
+    """Read every résumé once so the first job page after a restart is not slow."""
+    from sqlalchemy import select
+
+    from app.core.structure import resume_facts
+    from app.models import Candidate
+
+    session = admin_session()
+    try:
+        for text in session.scalars(select(Candidate.redacted_text)).all():
+            resume_facts(text or "")
+    finally:
+        session.close()
+
+
 async def _crawl_loop() -> None:
     settings = get_settings()
     while True:
@@ -65,6 +81,8 @@ async def lifespan(app: FastAPI):
         settings.aws_region,
     )
     app.state.embedder = FastEmbedder(settings.embedding_model)
+    if settings.warm_resume_cache:
+        threading.Thread(target=_warm_resume_cache, name="warm-resume-cache", daemon=True).start()
     task = None
     if settings.crawl_on_start:
         task = asyncio.create_task(_crawl_loop())

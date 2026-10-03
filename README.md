@@ -13,6 +13,8 @@ This repository is the recruiting assistant for [Janus Soft Inc.](https://www.ja
 | [deploy.md](deploy.md) | Phase 1.5: the public instance, Bedrock, private S3, Caddy, and backup restore. |
 | [aws_deploy.md](aws_deploy.md) | AWS resources in the CloudFormation stack, and the request flow through them. |
 | [google_deploy.md](google_deploy.md) | Proposed Google Cloud design: Cloud Run, Cloud SQL, Vertex AI, and automatic résumé import from a Shared Drive. |
+| [publish_cloudflare.md](publish_cloudflare.md) | Publish at `talent.janus-soft.com` with Cloudflare: DNS move, Tunnel from the Spark or a small server, Access for `/admin`, and the Google Sites button. |
+| [PRODUCT.md](PRODUCT.md) | Selling Talent Chat to other firms: features, branding settings, onboarding, gaps to close, pricing, and roadmap. |
 | [PROMPT.md](PROMPT.md) | The original Phase 1 kickoff. The application is already in this repository. |
 | `docs/diagrams/` | Diagram sources (`.mmd`) and rendered PNGs. Re-render with `scripts/render-diagrams.sh`. |
 | `tests/fixtures/careers/` | Snapshot of the live listing and detail pages (2026-09-27), used as parser fixtures. |
