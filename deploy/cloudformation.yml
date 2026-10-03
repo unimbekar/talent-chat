@@ -1,9 +1,11 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  Janus Soft public job chat at chat.janus-soft.com. One t4g.medium in us-east-1,
-  a private S3 bucket with an inbox prefix, and the Google OAuth client secret
-  for @janus-soft.com recruiter sign-in. The instance clones the git repo and
-  runs docker-compose.prod.yml. Do not put AWS access keys in this template.
+  Janus Soft public job chat at chat.janus-soft.com. One Graviton instance in
+  us-east-1, a private S3 bucket with an inbox prefix, and the Google OAuth
+  client secret for @janus-soft.com recruiter sign-in. DeployMode dev lets
+  CloudFormation delete the instance, the bucket, and both secrets immediately.
+  DeployMode prod keeps them. The instance clones the git repo and runs
+  docker-compose.prod.yml. Do not put AWS access keys in this template.
 
 Rules:
   InUsEast1:
@@ -69,12 +71,37 @@ Parameters:
     Default: ""
     NoEcho: true
     Description: OAuth client secret. CloudFormation stores it in Secrets Manager. It is not written into user data.
+  DeployMode:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - prod
+    Description: >
+      dev deletes the instance, the bucket, and both secrets when the stack is
+      deleted. Secrets are removed immediately, with no 30-day recovery window.
+      prod keeps the instance, the bucket, and both secrets, and a deleted
+      secret can be restored for 30 days.
+  InstanceType:
+    Type: String
+    Default: t4g.medium
+    AllowedValues:
+      - t4g.medium
+      - t4g.large
+      - t4g.xlarge
+      - t4g.2xlarge
+    Description: >
+      Graviton only. The machine image and the Docker Compose binary are arm64.
+      t4g.medium is 4 GB, t4g.large is 8 GB, t4g.xlarge is 16 GB, and
+      t4g.2xlarge is 32 GB. Use the next size if the image build runs out of memory.
+      Changing this replaces the instance.
 
 Conditions:
   HasDns: !Not [!Equals [!Ref HostedZoneId, ""]]
   HasSsh: !Not [!Equals [!Ref SshCidr, ""]]
   HasKey: !Not [!Equals [!Ref KeyName, ""]]
   HasGitToken: !Not [!Equals [!Ref GitTokenSecretArn, ""]]
+  IsProd: !Equals [!Ref DeployMode, prod]
 
 Resources:
   Vpc:
@@ -128,8 +155,8 @@ Resources:
 
   FilesBucket:
     Type: AWS::S3::Bucket
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: !If [IsProd, Retain, Delete]
+    UpdateReplacePolicy: !If [IsProd, Retain, Delete]
     Properties:
       BucketName: !Ref BucketName
       OwnershipControls:
@@ -178,22 +205,24 @@ Resources:
 
   AppSecret:
     Type: AWS::SecretsManager::Secret
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: !If [IsProd, Retain, Delete]
+    UpdateReplacePolicy: !If [IsProd, Retain, Delete]
     Properties:
       Name: !Sub talent-chat/${AWS::StackName}
       Description: Recruiter password, session secret, and database passwords. Written by the instance on first boot.
+      RecoveryWindowInDays: !If [IsProd, 30, 0]
       GenerateSecretString:
         PasswordLength: 32
         ExcludePunctuation: true
 
   GoogleOAuthSecret:
     Type: AWS::SecretsManager::Secret
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: !If [IsProd, Retain, Delete]
+    UpdateReplacePolicy: !If [IsProd, Retain, Delete]
     Properties:
       Name: !Sub talent-chat/${AWS::StackName}/google
       Description: Google OAuth client for @janus-soft.com recruiter sign-in and Drive read.
+      RecoveryWindowInDays: !If [IsProd, 30, 0]
       SecretString:
         Fn::ToJsonString:
           client_id: !Ref GoogleClientId
@@ -295,11 +324,13 @@ Resources:
       - DefaultRoute
       - FilesBucketPolicy
       - GoogleOAuthSecret
+    DeletionPolicy: !If [IsProd, Retain, Delete]
+    UpdateReplacePolicy: Delete
     CreationPolicy:
       ResourceSignal:
         Timeout: PT60M
     Properties:
-      InstanceType: t4g.medium
+      InstanceType: !Ref InstanceType
       ImageId: "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64}}"
       IamInstanceProfile: !Ref InstanceProfile
       KeyName: !If [HasKey, !Ref KeyName, !Ref "AWS::NoValue"]
@@ -316,7 +347,7 @@ Resources:
             VolumeSize: 30
             VolumeType: gp3
             Encrypted: true
-            DeleteOnTermination: true
+            DeleteOnTermination: !If [IsProd, false, true]
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
@@ -422,3 +453,9 @@ Outputs:
     Value: !Sub talent-chat/${AWS::StackName}/google
   InstanceId:
     Value: !Ref AppInstance
+  DeployMode:
+    Description: dev deletes secrets immediately. prod keeps the instance, the bucket, and both secrets.
+    Value: !Ref DeployMode
+  InstanceType:
+    Description: Graviton size used for this stack. A larger size is a stack update that replaces the instance.
+    Value: !Ref InstanceType

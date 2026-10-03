@@ -16,12 +16,12 @@ Diagram sources are in [docs/diagrams/](diagrams/). The pictures below are rende
 | `PublicRouteTable`, `DefaultRoute`, `SubnetRouteAssociation` | Route `0.0.0.0/0` to the gateway | Outbound traffic goes straight out. No NAT gateway |
 | `AppSecurityGroup` | Security group | TCP 80 and 443 from the internet. Postgres `5432`, the web port `3000`, and the API port `8000` are closed |
 | `SshIngress` | Extra rule | Created only when `SshCidr` is set. Leave it empty and use Session Manager |
-| `AppInstance` | `t4g.medium`, Amazon Linux 2023 arm64 | Runs every container. 30 GB encrypted gp3. IMDSv2 with hop limit 2 so Docker can see the instance role |
+| `AppInstance` | `InstanceType`, default `t4g.medium`, Amazon Linux 2023 arm64 | Runs every container. 30 GB encrypted gp3. IMDSv2 with hop limit 2 so Docker can see the instance role. `t4g.large` is 8 GB, `t4g.xlarge` is 16 GB, `t4g.2xlarge` is 32 GB. Dev deletes it with the stack. Prod keeps it. Changing the size replaces the instance |
 | `AppEip`, `AppEipAssociation` | Elastic IP | A stable address for the `chat` DNS record. Free while it is attached to this running instance |
 | `InstanceProfile`, `AppRole` | IAM role | Nova Lite, the two secrets, and S3 under `inbox/`, `originals/`, and `dumps/`. Also Session Manager |
-| `FilesBucket`, `FilesBucketPolicy` | S3 bucket | Private, SSE-S3, public access blocked, TLS required. `dumps/` expires after 14 days. Incomplete multipart uploads abort after 7 days. The bucket is kept if the stack is deleted |
-| `AppSecret` | Secrets Manager | Database passwords and the break-glass recruiter password. Written on first boot. Kept if the stack is deleted |
-| `GoogleOAuthSecret` | Secrets Manager | Google OAuth client id and secret. Kept if the stack is deleted. Not copied into instance user data |
+| `FilesBucket`, `FilesBucketPolicy` | S3 bucket | Private, SSE-S3, public access blocked, TLS required. `dumps/` expires after 14 days. Incomplete multipart uploads abort after 7 days. Dev deletes it with the stack when it is empty. Prod keeps it |
+| `AppSecret` | Secrets Manager | Database passwords and the break-glass recruiter password. Written on first boot. Dev deletes it immediately (`RecoveryWindowInDays` 0). Prod keeps it, with a 30-day recovery window |
+| `GoogleOAuthSecret` | Secrets Manager | Google OAuth client id and secret. Same dev and prod rules as `AppSecret`. Not copied into instance user data |
 | `DnsRecord` | Route 53 A record | Created only when `HostedZoneId` is set. Janus Soft DNS stays where it is, so leave this empty |
 
 First boot clones the git repo, reads both secrets, writes `.env`, builds the images, and starts Compose. The stack waits up to 60 minutes for that signal.

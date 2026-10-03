@@ -8,7 +8,7 @@ The template is already the small shape. A load balancer, a NAT gateway, a manag
 
 | Piece | About | Why this size |
 | --- | --- | --- |
-| `t4g.medium`, always on | $25 | 4 GB of memory. Postgres, Next.js, Caddy, and the embedding model share the machine. A `t4g.small` has 2 GB and will run out of memory once the embedding model is loaded |
+| `t4g.medium`, always on | $25 | 4 GB of memory. Postgres, Next.js, Caddy, and the embedding model share the machine. A `t4g.small` has 2 GB and will run out of memory once the embedding model is loaded. `InstanceType` can be `t4g.large` (8 GB, about $50), `t4g.xlarge` (16 GB, about $100), or `t4g.2xlarge` (32 GB, about $200) |
 | 30 GB gp3, encrypted | $2–3 | The first boot builds the images on the instance. 20 GB is tight during that build. Afterward the disk holds the images and Postgres |
 | Elastic IP | $0 while attached | It becomes about $3.60 a month only if the instance is stopped and the address is left allocated. Leave the instance running, or release the address when you stop it |
 | Two Secrets Manager secrets | about $0.80 | One for database passwords, one for the Google client. Merging them would save about forty cents and would make first boot overwrite the Google client |
@@ -39,8 +39,9 @@ A quiet month is about **$30–40** before Bedrock. With normal recruiter use of
 - Do not enable Bedrock provisioned throughput. On-demand Nova Lite matches this volume.
 - Do not turn on S3 versioning.
 - Delete `dumps/` yourself only if you need the space sooner. The lifecycle rule already removes them after 14 days, and incomplete multipart uploads are aborted after 7 days.
-- Deleting the CloudFormation stack does **not** delete the bucket or the two secrets. Those keep the small storage charge until you delete them by hand. That is intentional, so a stack delete does not throw away résumés and passwords.
-- A one-year Compute Savings Plan on the `t4g.medium` is the next discount, after the site has stayed up for a month. It is not required to launch.
+- `DeployMode=dev` deletes the instance, the bucket, and both secrets with the stack. Secrets go immediately, with no 30-day name lock. A non-empty bucket still blocks that delete until you empty it.
+- `DeployMode=prod` keeps the instance, the bucket, and both secrets. A secret deleted by hand can be restored for 30 days. The root disk stays if the instance is terminated. That is the setting for the site you intend to keep.
+- A one-year Compute Savings Plan on the instance type you actually run is the next discount, after the site has stayed up for a month. It is not required to launch.
 
 ## What would make it expensive
 

@@ -1,6 +1,6 @@
 # Phase 1.5 — public site
 
-The public chat runs on one `t4g.medium` in `us-east-1`. The DGX Spark can be off. This file is the instance setup, the nightly backup, and the restore drill. Create the stack, the DNS record, Google sign-in, and the two import paths by following [aws_deploy.md](aws_deploy.md).
+The public chat runs on one Graviton instance in `us-east-1`. The default is `t4g.medium`. The DGX Spark can be off. This file is the instance setup, the nightly backup, and the restore drill. Create the stack, the DNS record, Google sign-in, and the two import paths by following [aws_deploy.md](aws_deploy.md).
 
 The Spark stack does not change. Keep using `docker compose up` and `LLM_BACKEND=openai_compat` there. Production is a separate checkout and `docker-compose.prod.yml`.
 
@@ -33,7 +33,7 @@ Embeddings stay in-process FastEmbed. They do not move to Bedrock.
 
 ## Deploy with CloudFormation
 
-[deploy/cloudformation.yml](deploy/cloudformation.yml) creates the network, the private bucket, the instance role, a Secrets Manager secret, and one `t4g.medium`. On first boot the instance clones the git repo and runs [deploy/bootstrap.sh](deploy/bootstrap.sh), which writes `.env`, builds the images, and installs the nightly backup cron.
+[deploy/cloudformation.yml](deploy/cloudformation.yml) creates the network, the private bucket, the instance role, two Secrets Manager secrets, and one Graviton instance (`InstanceType`, default `t4g.medium`). On first boot the instance clones the git repo and runs [deploy/bootstrap.sh](deploy/bootstrap.sh), which writes `.env`, builds the images, and installs the nightly backup cron. `DeployMode=dev` deletes those secrets immediately with the stack. `DeployMode=prod` keeps the instance, the bucket, and the secrets.
 
 Use an AWS CLI profile on your own machine (`aws configure`, or a profile you already trust). Do not paste an access key, secret key, or session token into chat, into `.env`, or into the template. The instance uses its IAM role. There is no long-lived key on the box.
 
@@ -58,7 +58,7 @@ aws cloudformation deploy \
 
 Leave `HostedZoneId` out if the DNS zone is not in this account. After the stack finishes, point an A record at the `PublicIp` output. Leave `www.janus-soft.com` on Google Sites. Caddy obtains the certificate once that name resolves to the instance. The stack waits up to 60 minutes for the image build, then signals success.
 
-The bucket blocks public access, denies non-TLS requests, encrypts with SSE-S3, and expires `dumps/` after 14 days. Résumé objects under `originals/` stay until a recruiter deletes the candidate. Deleting the stack keeps the bucket and the secret.
+The bucket blocks public access, denies non-TLS requests, encrypts with SSE-S3, and expires `dumps/` after 14 days. Résumé objects under `originals/` stay until a recruiter deletes the candidate. In `dev`, deleting the stack also deletes the bucket and both secrets, and the secrets are not recoverable. In `prod`, the stack delete keeps the bucket and the secrets.
 
 Recruiter password, after `CREATE_COMPLETE`:
 

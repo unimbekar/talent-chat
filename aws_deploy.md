@@ -2,7 +2,7 @@
 
 CloudFormation creates the AWS resources. Google creates the OAuth client, because a Workspace account cannot be created from AWS. Recruiters then sign in with `@janus-soft.com` and import résumés from a Drive folder or from the S3 inbox.
 
-The Spark stays the machine you build on. This stack is a separate checkout on one `t4g.medium` in `us-east-1`. The template is [deploy/cloudformation.yml](deploy/cloudformation.yml). Backup and restore stay in [deploy.md](deploy.md).
+The Spark stays the machine you build on. This stack is a separate checkout on one Graviton instance in `us-east-1`. The default size is `t4g.medium` (4 GB). `InstanceType` can be `t4g.large` (8 GB), `t4g.xlarge` (16 GB), or `t4g.2xlarge` (32 GB). The template is [deploy/cloudformation.yml](deploy/cloudformation.yml). Backup and restore stay in [deploy.md](deploy.md).
 
 How the resources fit together, how a question becomes an answer, and what the bill includes:
 
@@ -58,8 +58,16 @@ aws cloudformation deploy \
     AcmEmail=you@janus-soft.com \
     BucketName=talent-chat-ACCOUNTID \
     GoogleClientId=YOUR_CLIENT_ID.apps.googleusercontent.com \
-    GoogleClientSecret=YOUR_CLIENT_SECRET
+    GoogleClientSecret=YOUR_CLIENT_SECRET \
+    DeployMode=dev \
+    InstanceType=t4g.medium
 ```
+
+`DeployMode=dev` is the default. CloudFormation deletes the instance, the bucket, and both secrets with the stack, and the secrets are removed immediately. There is no 30-day recovery window. A non-empty bucket cannot be deleted; empty `inbox/`, `originals/`, and `dumps/` first.
+
+Set `DeployMode=prod` only for the stack you intend to keep. Prod keeps the instance, the bucket, and both secrets if the stack is deleted. A secret that is deleted by hand can be restored for 30 days. The prod root disk is also kept if the instance is terminated.
+
+`InstanceType` must stay in the `t4g` list. The machine image is arm64. Use `t4g.large` when a 4 GB machine runs out of memory during the image build. Changing the size later replaces the instance.
 
 Leave `HostedZoneId` empty. `janus-soft.com` stays on its current name servers. The stack takes up to 60 minutes because the instance builds the images, then signals success.
 
@@ -136,11 +144,11 @@ There is no load balancer and no NAT gateway. Caddy on the instance is the only 
 | `AppSecurityGroup` | Security group | TCP 80 and 443 from the internet. 5432, 3000, and 8000 stay closed |
 | `SshIngress` | Security group rule | TCP 22, only when `SshCidr` is set |
 | `AppEip` | Elastic IP | The address for the `chat` A record |
-| `AppInstance` | EC2 | `t4g.medium`, Amazon Linux 2023 arm64, IMDSv2, hop limit 2, 30 GB gp3 encrypted |
+| `AppInstance` | EC2 | `InstanceType`, default `t4g.medium`, Amazon Linux 2023 arm64, IMDSv2, hop limit 2, 30 GB gp3 encrypted. Deleted with the stack in dev. Kept in prod. A size change replaces it |
 | `AppRole` | IAM role | Nova Lite, the app secret, the Google secret, and S3 under `originals/`, `dumps/`, and `inbox/` |
-| `FilesBucket` | S3 | Private, SSE-S3, TLS required. `dumps/` expires after 14 days. Kept if the stack is deleted |
-| `AppSecret` | Secrets Manager | Recruiter password and database passwords. Kept if the stack is deleted |
-| `GoogleOAuthSecret` | Secrets Manager | `client_id` and `client_secret`. Kept if the stack is deleted |
+| `FilesBucket` | S3 | Private, SSE-S3, TLS required. `dumps/` expires after 14 days. Deleted with the stack in dev, if the bucket is empty. Kept in prod |
+| `AppSecret` | Secrets Manager | Recruiter password and database passwords. Dev: deleted immediately. Prod: kept, and a manual delete has a 30-day recovery window |
+| `GoogleOAuthSecret` | Secrets Manager | `client_id` and `client_secret`. Same dev and prod rules as `AppSecret` |
 | `DnsRecord` | Route 53 A record | Only when `HostedZoneId` is set |
 
 These are used and are not created by the template:
