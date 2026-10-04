@@ -43,18 +43,54 @@ def parse_drive_folder(text: str) -> str:
     raise RemoteIngestError("Paste a Google Drive folder link or folder id.")
 
 
-def ingest_prefix(text: str, root: str | None = None) -> str:
-    """Keep S3 imports inside the inbox prefix. originals/ and dumps/ stay closed."""
-    base = (root if root is not None else get_settings().s3_ingest_prefix).strip().strip("/")
-    if not base:
-        base = "inbox"
-    raw = (text or base).strip().strip("/")
-    parts = [part for part in raw.split("/") if part]
+_CLOSED_PREFIXES = {"originals", "dumps"}
+
+
+def parse_s3_location(text: str, *, bucket: str | None = None, default_prefix: str | None = None) -> tuple[str, str]:
+    """Return (bucket, key prefix) for a folder the recruiter typed.
+
+    A leading slash or s3:// means the first segment is the bucket:
+    /janus-soft-jobs-chat/Resume-Refined/AI Engineer.
+    Otherwise the text is a folder inside the configured bucket.
+    originals/ and dumps/ stay closed.
+    """
+    settings = get_settings()
+    configured = (settings.s3_bucket if bucket is None else bucket).strip()
+    fallback = (settings.s3_ingest_prefix if default_prefix is None else default_prefix).strip().strip("/") or "inbox"
+    raw = (text or "").strip()
+    names_bucket = False
+    if raw.lower().startswith("s3://"):
+        raw = raw[5:]
+        names_bucket = True
+    elif raw.startswith("/"):
+        raw = raw[1:]
+        names_bucket = True
+    parts = [part for part in raw.split("/") if part and part != "."]
     if any(part == ".." for part in parts):
-        raise RemoteIngestError("That prefix is outside the inbox.")
-    if parts != [base] and not raw.startswith(base + "/"):
-        raise RemoteIngestError(f"S3 import stays under {base}/.")
-    return raw + "/"
+        raise RemoteIngestError("That folder is outside the résumé bucket.")
+    chosen = configured
+    key_parts = parts
+    if names_bucket:
+        if not parts:
+            raise RemoteIngestError("Paste the bucket and folder, such as /janus-soft-jobs-chat/Resume-Refined/AI Engineer.")
+        chosen = parts[0]
+        key_parts = parts[1:]
+    elif not parts:
+        key_parts = [fallback]
+    if not chosen:
+        raise RemoteIngestError("Paste the bucket and folder, such as /janus-soft-jobs-chat/Resume-Refined/AI Engineer.")
+    if configured and chosen != configured:
+        raise RemoteIngestError(f"That path is not in bucket {configured}.")
+    if key_parts and key_parts[0] in _CLOSED_PREFIXES:
+        raise RemoteIngestError("originals and database dumps are not an import source.")
+    prefix = "/".join(key_parts)
+    return chosen, f"{prefix}/" if prefix else ""
+
+
+def ingest_prefix(text: str, root: str | None = None) -> str:
+    """Key prefix inside a known bucket. The first argument is the folder, not the bucket."""
+    _bucket, prefix = parse_s3_location(text, bucket="talent", default_prefix=root or "inbox")
+    return prefix or "inbox/"
 
 
 def materialize_drive(folder: str, access_token: str, *, download: bool) -> Path:
@@ -70,9 +106,7 @@ def materialize_drive(folder: str, access_token: str, *, download: bool) -> Path
 
 def materialize_s3(prefix: str, *, download: bool) -> Path:
     settings = get_settings()
-    if not settings.s3_bucket.strip():
-        raise RemoteIngestError("S3 import is available on the AWS site, where the résumé bucket is set.")
-    key_prefix = ingest_prefix(prefix)
+    bucket, key_prefix = parse_s3_location(prefix)
     root = Path(tempfile.mkdtemp(prefix="talent-s3-"))
     try:
         import boto3
@@ -80,7 +114,7 @@ def materialize_s3(prefix: str, *, download: bool) -> Path:
         client = boto3.client("s3", region_name=settings.aws_region or "us-east-1")
         pager = client.get_paginator("list_objects_v2")
         count = 0
-        for page in pager.paginate(Bucket=settings.s3_bucket, Prefix=key_prefix):
+        for page in pager.paginate(Bucket=bucket, Prefix=key_prefix):
             for item in page.get("Contents") or []:
                 key = item.get("Key") or ""
                 if key.endswith("/") or not _resume_suffix(Path(key).name):
@@ -92,16 +126,25 @@ def materialize_s3(prefix: str, *, download: bool) -> Path:
                 dest = _destination(root, relative)
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 if download:
-                    client.download_file(settings.s3_bucket, key, str(dest))
+                    client.download_file(bucket, key, str(dest))
                 else:
-                    dest.write_bytes(b"")
+                    _placeholder(dest, item.get("Size"))
                 _set_mtime(dest, item.get("LastModified"))
     except RemoteIngestError:
         shutil.rmtree(root, ignore_errors=True)
         raise
     except Exception as exc:
         shutil.rmtree(root, ignore_errors=True)
-        raise RemoteIngestError("The S3 inbox could not be read.") from exc
+        code = ""
+        response = getattr(exc, "response", None)
+        if isinstance(response, dict):
+            code = str((response.get("Error") or {}).get("Code") or "")
+        detail = "That S3 folder could not be read."
+        if code:
+            detail = f"{detail} ({code})"
+        elif type(exc).__name__ in {"NoCredentialsError", "PartialCredentialsError"}:
+            detail = f"{detail} This server has no AWS credentials."
+        raise RemoteIngestError(detail) from exc
     return root
 
 
@@ -113,18 +156,24 @@ def _walk_drive(root: Path, folder_id: str, token: str, relative: Path, depth: i
     while True:
         params = {
             "q": f"'{folder_id}' in parents and trashed = false",
-            "fields": "nextPageToken, files(id, name, mimeType, modifiedTime)",
+            "fields": "nextPageToken, files(id, name, mimeType, modifiedTime, size)",
             "pageSize": "100",
             "supportsAllDrives": "true",
             "includeItemsFromAllDrives": "true",
-            "pageToken": page,
+            "corpora": "allDrives",
         }
+        if page:
+            params["pageToken"] = page
         try:
             response = httpx.get(_DRIVE_FILES, headers=headers, params=params, timeout=30)
             response.raise_for_status()
             body = response.json()
         except (httpx.HTTPError, ValueError) as exc:
-            raise RemoteIngestError("Google Drive did not return that folder. Sign in again, and use a folder your account can open.") from exc
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            detail = "Google Drive did not return that folder. Sign in again, and use a folder your account can open."
+            if status:
+                detail = f"{detail} ({status})"
+            raise RemoteIngestError(detail) from exc
         for item in body.get("files") or []:
             name = _safe_part(str(item.get("name") or "file"))
             mime = str(item.get("mimeType") or "")
@@ -143,7 +192,7 @@ def _walk_drive(root: Path, folder_id: str, token: str, relative: Path, depth: i
             if download:
                 _download_drive(str(item["id"]), mime, dest, headers)
             else:
-                dest.write_bytes(b"")
+                _placeholder(dest, item.get("size"))
             _set_mtime(dest, item.get("modifiedTime"))
             if sum(1 for _ in root.rglob("*") if _.is_file()) > _MAX_FILES:
                 raise RemoteIngestError(f"That folder has more than {_MAX_FILES} résumés. Split it into smaller folders.")
@@ -197,6 +246,20 @@ def _resume_suffix(name: str) -> str:
     if suffix in {".pdf", ".doc", ".docx", ".txt"}:
         return suffix
     return ""
+
+
+def _placeholder(path: Path, size) -> None:
+    """Keep the listed size so a folder check can see the file before it is downloaded."""
+    try:
+        nbytes = int(size)
+    except (TypeError, ValueError):
+        nbytes = 256
+    if nbytes < 0:
+        nbytes = 256
+    if nbytes > 20 * 1024 * 1024:
+        nbytes = 20 * 1024 * 1024
+    path.write_bytes(b"")
+    os.truncate(path, nbytes)
 
 
 def _set_mtime(path: Path, value) -> None:

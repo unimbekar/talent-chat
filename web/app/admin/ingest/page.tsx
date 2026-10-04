@@ -30,9 +30,7 @@ export default function IngestPage() {
   const [source, setSource] = useState<Source>("folder");
   const [driveReady, setDriveReady] = useState(false);
   const [googleOn, setGoogleOn] = useState(false);
-  const [s3Ready, setS3Ready] = useState(false);
   const [signedInAs, setSignedInAs] = useState("");
-  const [inbox, setInbox] = useState("inbox");
 
   useEffect(() => {
     fetch("/api/admin/overview").then(async (response) => {
@@ -52,9 +50,7 @@ export default function IngestPage() {
       const data = await response.json();
       setDriveReady(Boolean(data.drive));
       setGoogleOn(Boolean(data.google));
-      setS3Ready(Boolean(data.s3));
       setSignedInAs(data.email || "");
-      if (data.s3_prefix) setInbox(data.s3_prefix);
     });
   }, [router]);
   const [scan, setScan] = useState<Scan | null>(null);
@@ -181,7 +177,7 @@ export default function IngestPage() {
       <div>
         <h1 className="page-title">Ingest résumés</h1>
         <p className="page-lead">
-          Import the newest PDF, DOC, DOCX, or TXT for each person from a server folder, a Google Drive folder, or the S3 inbox. Offer letters and invoices stay out. Nothing is emailed.
+          Import the newest PDF, DOC, DOCX, or TXT for each person from a server folder, a Google Drive folder, or an S3 folder. Offer letters and invoices stay out. Nothing is emailed.
         </p>
       </div>
 
@@ -203,7 +199,7 @@ export default function IngestPage() {
               onClick={() => {
                 setSource(value);
                 setScan(null);
-                setPath(value === "folder" ? `${library}/Candidates` : value === "s3" ? `${inbox}/` : "");
+                setPath(value === "folder" ? `${library}/Candidates` : "");
               }}
             >
               {label}
@@ -218,7 +214,7 @@ export default function IngestPage() {
               setPath(event.target.value);
               setScan(null);
             }}
-            placeholder={source === "drive" ? "https://drive.google.com/drive/folders/…" : source === "s3" ? `${inbox}/` : `${library}/Candidates`}
+            placeholder={source === "drive" ? "https://drive.google.com/drive/folders/…" : source === "s3" ? "/janus-soft-jobs-chat/Resume-Refined/AI Engineer" : `${library}/Candidates`}
             className="mt-1 font-mono"
             aria-label={source === "drive" ? "Drive folder" : source === "s3" ? "S3 prefix" : "Folder"}
             autoComplete="off"
@@ -230,9 +226,8 @@ export default function IngestPage() {
             : googleOn
               ? "Sign in with your janus-soft.com Google account before reading Drive."
               : "Google sign-in is not configured on this server yet.")}
-          {source === "s3" && (s3Ready
-            ? `Files already in s3 under ${inbox}/. originals and database dumps are not imported from here.`
-            : "S3 import runs on the AWS site, where the private résumé bucket is configured.")}
+          {source === "s3" &&
+            "Paste /bucket/folder, such as /janus-soft-jobs-chat/Resume-Refined/AI Engineer. originals and dumps stay closed. Check the folder first. Ingest résumés turns on when people are found."}
           {source === "folder" && `A full path inside ${library}, or the short name of a folder under Candidates.`}
         </p>
         {source === "drive" && !driveReady && googleOn && (
@@ -241,7 +236,7 @@ export default function IngestPage() {
           </a>
         )}
         <div className="mt-3 flex flex-wrap gap-2">
-          <Button type="submit" variant="outline" disabled={checking || progress?.running || (source === "drive" && !driveReady) || (source === "s3" && !s3Ready)}>
+          <Button type="submit" variant="outline" disabled={checking || progress?.running || (source === "drive" && !driveReady)}>
             {checking ? "Checking…" : "Check folder"}
           </Button>
           <Button type="button" onClick={startImport} disabled={!scan || scan.people === 0 || progress?.running}>

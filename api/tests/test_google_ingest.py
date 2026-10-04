@@ -28,10 +28,25 @@ def test_drive_folder_link_and_bare_id():
         parse_drive_folder("https://drive.google.com/file/d/1AbC-def_GHIJK12345/view")
 
 
-def test_s3_prefix_stays_inside_the_inbox():
-    assert ingest_prefix("", "inbox") == "inbox/"
+def test_s3_prefix_accepts_a_bucket_path_and_rejects_closed_folders():
+    from app.admin.remote_ingest import parse_s3_location
+
+    assert parse_s3_location(
+        "/janus-soft-jobs-chat/Resume-Refined/AI Engineer",
+        bucket="",
+    ) == ("janus-soft-jobs-chat", "Resume-Refined/AI Engineer/")
+    assert parse_s3_location(
+        "s3://janus-soft-jobs-chat/Resume-Refined/AI Engineer",
+        bucket="janus-soft-jobs-chat",
+    ) == ("janus-soft-jobs-chat", "Resume-Refined/AI Engineer/")
+    assert parse_s3_location("Resume-Refined/AI Engineer", bucket="janus-soft-jobs-chat") == (
+        "janus-soft-jobs-chat",
+        "Resume-Refined/AI Engineer/",
+    )
     assert ingest_prefix("inbox/2026", "inbox") == "inbox/2026/"
     with pytest.raises(RemoteIngestError):
-        ingest_prefix("originals/", "inbox")
+        parse_s3_location("/janus-soft-jobs-chat/originals/one.pdf", bucket="")
+    with pytest.raises(RemoteIngestError):
+        parse_s3_location("/other-bucket/Resume-Refined", bucket="janus-soft-jobs-chat")
     with pytest.raises(RemoteIngestError):
         ingest_prefix("inbox/../dumps", "inbox")

@@ -43,6 +43,10 @@ services:
       LOCATIONS_FILE: /app/configs/locations.yaml
       RESUME_FOLDER: /resumes
       RESUME_LIBRARY_HOST: ${RESUME_LIBRARY_HOST:-/mnt/synology/janus-soft}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_SDK_LOAD_CONFIG: "1"
+      AWS_CONFIG_FILE: /root/.aws/config
+      AWS_SHARED_CREDENTIALS_FILE: /root/.aws/credentials
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -50,6 +54,7 @@ services:
       - ./secrets/admin_password_hash:/run/secrets/admin_password_hash:ro
       - ${RESUME_HOST_DIR:-/mnt/synology/janus-soft/Candidates}:/resumes:ro
       - ${RESUME_LIBRARY_HOST:-/mnt/synology/janus-soft}:/library:ro
+      - ${HOME}/.aws:/root/.aws
     depends_on:
       postgres:
         condition: service_healthy
