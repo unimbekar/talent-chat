@@ -1,0 +1,16 @@
+sequenceDiagram
+    actor Recruiter
+    participant Desk
+    participant API
+    participant Source as Folder, Drive, or S3
+    participant People
+
+    Recruiter->>Desk: Paste a folder
+    Desk->>API: Check
+    API->>Source: List PDF, DOC, DOCX, TXT
+    API-->>Desk: One newest file per person
+    Recruiter->>Desk: Ingest
+    Desk->>API: Start
+    API->>Source: Read those files
+    API->>People: Update that person in place
+    API-->>Desk: Progress, then unparsed files

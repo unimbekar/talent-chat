@@ -1,10 +1,58 @@
 # Janus Soft recruiting assistant
 
-This repository is the recruiting assistant for [Janus Soft Inc.](https://www.janus-soft.com): a public job chat and a recruiter desk. Phase 1 runs on an NVIDIA DGX Spark with Docker Compose. The public site is the AWS stack in [aws_deploy.md](aws_deploy.md). Recruiters there sign in with a `@janus-soft.com` Google account and can import résumés from Drive or from the S3 inbox. Email sending is still a later phase.
+This repository is the recruiting assistant for [Janus Soft Inc.](https://www.janus-soft.com): a public job chat and a recruiter desk. Phase 1 runs on an NVIDIA DGX Spark with Docker Compose. The public site is the AWS stack in [aws_deploy.md](aws_deploy.md). Recruiters there sign in with a `@janus-soft.com` Google account and can import résumés from Drive or from S3. Email sending is still a later phase.
+
+## Design
+
+Two rooms share one building. Visitors never enter the recruiter room.
+
+A visitor on `/chat` asks in ordinary language. The answer is a sentence plus cards. Each card quotes the line from the posting that matched. The public database role can read jobs and cannot read candidates, emails, or phone numbers. A test fails if public code imports the recruiter modules.
+
+A recruiter on `/admin` works the other direction. Jobs are crawled from the careers page. Résumés come from a library folder, a Google Drive folder, or an S3 prefix. The desk keeps the newest PDF, DOC, DOCX, or TXT per person. A match is the share of mandatory posting lines the résumé covers. Below 50% the person is not listed. At 90% the match is strong. A tool named in the job title has to appear on the résumé.
+
+The model does not choose the jobs or the people. Search, filters, and scores are code. The model writes the short sentence after the cards are already chosen, and it reads a question when a recruiter asks Find. When the model is down, the cards and the lists still appear.
+
+![Overall design](docs/diagrams/29-overall-design.png)
+
+On the Spark, Web is Next.js and the model is Ollama. On the public host, Caddy is the only open door and the sentence is written by Bedrock. Postgres stays on the machine. The same API image runs in both places.
+
+### A visitor asks
+
+The cards return before the model speaks. The page then asks for the written sentence and replaces the plain summary only if that sentence arrives.
+
+![A visitor asks](docs/diagrams/30-visitor-asks.png)
+
+A line that says the tool is excluded does not count. “Spring Framework” still counts for Spring Boot, and the card shows that sentence. Closed postings are a separate list.
+
+### A recruiter files a folder
+
+Check comes first. The import starts only after the page has shown how many people it found.
+
+![A recruiter files a folder](docs/diagrams/31-recruiter-files.png)
+
+Offer letters and invoices stay out. A second import of the same person updates the record. Nothing is emailed.
+
+## Screens
+
+The public page is a single conversation. The examples under the headline are real questions the matcher answers.
+
+![Careers chat](docs/diagrams/chat-empty.png)
+
+After the question, the summary is on screen at once. The card is the evidence.
+
+![Spring Boot answer](docs/diagrams/chat-answer.png)
+
+The recruiter desk uses the same quiet type, on a dark bar. A job page is where a résumé earns its place: the mandatory lines it covers, the lines it misses, and a checkbox for the address. Copy does not send mail.
+
+![Review a match](docs/diagrams/job-match.png)
+
+Ingest is the third screen a recruiter lives on. Three sources, one rule: the newest résumé for each person.
+
+![Ingest from S3](docs/diagrams/ingest.png)
 
 | File | What it is |
 | --- | --- |
-| [README.md](README.md) | How to run Phase 1, how Ingest reads a folder, and how the recruiter screens score a résumé. |
+| [README.md](README.md) | The design, the screens, how to run Phase 1, and how a résumé is scored. |
 | [SPEC.md](SPEC.md) | Product specification. Section 5 records both the stored rank score and the line coverage the recruiter sees. |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How the pieces fit, including the Review screen. |
 | [postgres.md](postgres.md) | Database setup: connect, read, purge, and troubleshoot `talent`. |

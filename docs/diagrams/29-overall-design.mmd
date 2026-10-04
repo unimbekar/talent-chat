@@ -1,0 +1,16 @@
+flowchart LR
+    visitor([Visitor]) --> chat["/chat"]
+    recruiter([Recruiter]) --> desk["/admin"]
+
+    chat --> web["Web"]
+    desk --> web
+    web --> api["API"]
+
+    api --> jobs[("Jobs<br/>public role")]
+    api --> people[("Candidates<br/>recruiter role")]
+    api --> model["Ollama or Bedrock<br/>writes the sentence"]
+
+    careers["janus-soft.com/career"] --> api
+    library["Résumé library"] --> api
+    drive["Google Drive"] --> api
+    s3["S3 folder"] --> api

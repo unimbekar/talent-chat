@@ -1,0 +1,16 @@
+sequenceDiagram
+    actor Visitor
+    participant Web
+    participant API
+    participant Jobs
+    participant Model
+
+    Visitor->>Web: Which jobs require Spring Boot?
+    Web->>API: Question, no model yet
+    API->>Jobs: Titles, cities, posting lines
+    Jobs-->>API: Open roles, and closed roles that name it
+    API-->>Web: Cards, each with the matching line
+    Web-->>Visitor: The list, immediately
+    Web->>API: Explain these cards
+    API->>Model: The jobs already chosen
+    Model-->>Web: Two to four sentences
