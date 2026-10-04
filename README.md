@@ -183,7 +183,23 @@ The Compose stack is `web`, `api`, and `postgres` (`pgvector/pgvector:pg16`). Im
 
 Run every command from the repository root (`~/spark-dev-workspace/projects/talent-chat`). The stack has four containers: `postgres`, `api`, `web`, and `ollama-bridge`. Ollama is not part of Compose. It runs on the Spark as a systemd service.
 
-### Start
+### Stop and start
+
+Stop the site and leave the containers in place:
+
+```bash
+docker compose stop
+```
+
+Start those same containers again. This does not rebuild images:
+
+```bash
+docker compose start
+```
+
+`docker compose up -d` is the command to use when the containers were removed, or when `docker-compose.yml` or `.env` changed. It recreates only what changed. `docker compose up -d --build` rebuilds images first. Use that after editing code under `api/` or `web/`.
+
+### Start the first time
 
 1. Make sure Ollama is up and the chat model is present:
 
@@ -217,7 +233,7 @@ Run every command from the repository root (`~/spark-dev-workspace/projects/tale
    - Public chat: `http://localhost:3010/chat`
    - Recruiter desk: `http://localhost:3010/admin`
 
-   From your laptop over Tailscale, use the Spark's Tailscale address instead of `localhost`, for example `http://100.65.241.97:3010/chat`. The web port listens on all interfaces. Postgres stays on `127.0.0.1` only.
+   From the editor browser on this machine, `localhost` is refused. Use the Spark LAN address, `http://192.168.1.189:3010/chat`. From a laptop over Tailscale, use the Spark's Tailscale address, `http://100.65.241.97:3010/chat`. The web port listens on all interfaces. Postgres stays on `127.0.0.1` only.
 
 ### Restart
 
@@ -226,14 +242,15 @@ Choose the restart based on what changed.
 | What changed | Command |
 | --- | --- |
 | Nothing; a container is stuck | `docker compose restart api` (or `web`, `postgres`, `ollama-bridge`) |
-| `.env` values | `docker compose up -d` — `restart` does not reload `.env`; `up -d` recreates only the containers whose settings changed |
+| `.env` or `docker-compose.yml` | `docker compose up -d` — `restart` does not reload `.env` or a new volume mount |
 | Code under `api/` or `web/` | `docker compose up -d --build api web` |
+| `aws login` was renewed on the Spark | `docker compose restart api` |
 | Ollama itself | `sudo systemctl restart ollama`, then `docker compose restart ollama-bridge` if chat explanations stay unavailable |
 | Everything | `docker compose down && docker compose up -d --build` |
 
 Set `CRAWL_ON_START=false` in `.env` if you restart often and don't want the API to re-crawl the careers page on each start.
 
-### Stop
+### Stop and remove
 
 ```bash
 docker compose stop    # stop containers, keep them for a fast start later
@@ -244,17 +261,32 @@ Both keep your data. Jobs, matches, and admin sessions live in the `talent-chat_
 
 `docker compose down -v` also deletes both volumes. That erases the database and every uploaded résumé. Use it only when you mean to start from an empty database.
 
-### Logs and quick checks
+### Troubleshoot
 
 ```bash
-docker compose logs -f api                  # follow API logs (Ctrl+C to stop following)
+docker compose ps
+docker compose logs api --tail 80
+docker compose logs -f api                  # follow API logs; Ctrl+C stops following
 docker compose logs web --tail 50
 docker compose logs ollama-bridge --tail 20 # should show the 172.17.0.1:11434 listen line
-curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3010/chat   # expect 200
+docker compose top                          # processes inside each container
+docker stats --no-stream                    # CPU and memory right now
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3010/chat          # expect 200
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3010/api/health    # expect 200
+docker compose exec api /app/.venv/bin/python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health').read())"
+ss -ltnp | grep 3010                        # who owns the web port
 ```
 
-If port `3010` is already taken, change `WEB_PORT` in `.env` and run `docker compose up -d`.
+| What you see | What to run |
+| --- | --- |
+| `docker compose ps` shows `api` unhealthy or restarting | `docker compose logs api --tail 100`. The usual cause is Postgres not ready yet, or a failed migration |
+| Chat page loads and explanations say they are unavailable | `systemctl status ollama --no-pager`, then `docker compose logs ollama-bridge --tail 20` |
+| Port 3010 refuses connections on the Spark | `docker compose ps`. If `web` is missing, `docker compose up -d`. If the port is taken, change `WEB_PORT` in `.env` and run `docker compose up -d` |
+| Editor browser says connection refused for `localhost` | Open `http://192.168.1.189:3010/chat` |
+| S3 check says the server has no AWS credentials | Run `aws login` on the Spark, then `docker compose restart api`. The API container reads `~/.aws` from the Spark. It does not keep its own access key |
+| S3 check says the login credential provider needs `botocore[crt]` | Rebuild the API image: `docker compose up -d --build api` |
+| A code change is not on the page | `docker compose up -d --build api web` |
 
-Do not commit real résumés, `.env`, or `secrets/`. Use synthetic résumés in git. On the AWS site a recruiter signed in with Google can import a Drive folder, or files already in the S3 inbox.
+Do not commit real résumés, `.env`, or `secrets/`. Use synthetic résumés in git. On this Spark, `aws login` plus the `~/.aws` mount lets Ingest read an S3 folder such as `/janus-soft-jobs-chat/Resume-Refined/AI Engineer`. On the AWS site, a recruiter signed in with Google can import a Drive folder, or files already in S3.
 
-The public site is a separate machine. [deploy.md](deploy.md) covers the `t4g.medium`, Bedrock, the private bucket, and Caddy. Do not point the Spark compose file at that bucket.
+The public site is a separate machine. [deploy.md](deploy.md) covers that instance, Bedrock, the private bucket, and Caddy.
