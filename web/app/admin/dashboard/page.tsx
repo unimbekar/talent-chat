@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
-import { AlertTriangle, ArrowRight, Briefcase, CheckCircle2, ClipboardCheck, FolderInput, MapPin, RefreshCw, Route, Search, Sparkles, UserPlus, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, BarChart3, Briefcase, CheckCircle2, ClipboardCheck, FolderInput, MapPin, RefreshCw, Route, Search, Sparkles, UserPlus, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { readCache, writeCache } from "@/lib/page-cache";
@@ -57,6 +57,11 @@ export default function DashboardPage() {
           <Button asChild variant="outline">
             <Link href="/admin/ingest">
               <FolderInput /> Import résumés
+            </Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/admin/reports">
+              <BarChart3 /> Reports
             </Link>
           </Button>
           <Button asChild>

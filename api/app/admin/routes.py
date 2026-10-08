@@ -6,6 +6,7 @@ import hashlib
 import logging
 import shutil
 import uuid
+from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import RedirectResponse
@@ -45,7 +46,7 @@ from app.core.detail_parser import DetailParse
 from app.core.extract import ExtractError, extract_text
 from app.core.labor import categories_for_question, labor_categories
 from app.core.llm import LLMError
-from app.core.files import store_original
+from app.core.files import read_stored, store_original
 from app.core.redact import redact_ssn
 from app.core.skills import normalize_skill_list
 from app.core.structure import skills_from_quotes
@@ -924,6 +925,40 @@ def get_resume(candidate_id: uuid.UUID, session: Session = Depends(require_admin
     payload = [_match_out(session, row) for row in matches]
     payload.sort(key=_coverage_sort, reverse=True)
     return {"candidate": _candidate_out(candidate), "matches": payload}
+
+
+_RESUME_TYPES = {
+    ".pdf": "application/pdf",
+    ".doc": "application/msword",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".txt": "text/plain; charset=utf-8",
+}
+
+
+@router.get("/resumes/{candidate_id}/file")
+def get_resume_file(candidate_id: uuid.UUID, session: Session = Depends(require_admin)):
+    candidate = get_candidate(session, candidate_id)
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="Candidate not found.")
+    data = read_stored(candidate.original_path)
+    if data is None:
+        raise HTTPException(status_code=404, detail="The original résumé file is not on file.")
+    _audit(session, "resume_file", subject_id=candidate.id, outcome="ok")
+    session.commit()
+    name = Path(candidate.original_filename or "resume.pdf").name
+    media = _RESUME_TYPES.get(Path(name).suffix.lower(), "application/octet-stream")
+    # PDFs and text open in the browser tab; Word files download.
+    disposition = "inline" if media.startswith(("application/pdf", "text/")) else "attachment"
+    ascii_name = name.encode("ascii", "ignore").decode() or "resume"
+    return Response(
+        content=data,
+        media_type=media,
+        headers={
+            "Content-Disposition": f"{disposition}; filename=\"{ascii_name.replace(chr(34), '')}\"; filename*=UTF-8''{quote(name)}",
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 def _company_email(email: str | None) -> bool:

@@ -240,3 +240,31 @@ def test_public_role_cannot_read_submissions(_database):
             connection.execute(f"SELECT * FROM {table}")
         connection.rollback()
     connection.close()
+
+
+def test_original_resume_file_and_candidate_pipeline_filter(db, tmp_path):
+    job, alex, sam = _seed(db)
+    pdf = tmp_path / "alex"
+    pdf.write_bytes(b"%PDF-1.4 alex")
+    alex.original_path = str(pdf)
+    alex.original_filename = "Alex Rivera résumé.pdf"
+    sam.original_path = str(tmp_path / "gone")
+    db.commit()
+    client = _client()
+    try:
+        assert client.get(f"/admin/resumes/{alex.id}/file").status_code == 401
+        _login(client)
+        opened = client.get(f"/admin/resumes/{alex.id}/file")
+        assert opened.status_code == 200
+        assert opened.content == b"%PDF-1.4 alex"
+        assert opened.headers["content-type"] == "application/pdf"
+        assert opened.headers["content-disposition"].startswith("inline;")
+        assert "filename*=UTF-8''Alex%20Rivera%20r%C3%A9sum%C3%A9.pdf" in opened.headers["content-disposition"]
+        assert client.get(f"/admin/resumes/{sam.id}/file").status_code == 404
+
+        assert client.post("/admin/submissions", json={"candidate_id": str(alex.id), "requisition_code": "A1001"}).status_code == 200
+        board = client.get(f"/admin/pipeline?scope=all&candidate_id={alex.id}").json()
+        assert [(row["job"]["requisition_code"], row["stage_label"]) for row in board["submissions"]] == [("A1001", "Submitted")]
+        assert client.get(f"/admin/pipeline?scope=all&candidate_id={sam.id}").json()["submissions"] == []
+    finally:
+        client.__exit__(None, None, None)

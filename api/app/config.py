@@ -54,7 +54,15 @@ class Settings(BaseSettings):
     llm_base_url: str = "http://host.docker.internal:11434/v1"
     llm_model: str = "qwen3.6:latest"
     llm_api_key: str = ""
+    # Sent as reasoning_effort to openai_compat servers. "none" turns Qwen3 thinking off on
+    # Ollama. Set it empty for servers that reject the field.
+    llm_reasoning_effort: str = "none"
     aws_region: str = "us-east-1"
+    # Recruiter assistant. An empty model means the assistant uses LLM_MODEL. The backend can
+    # differ, for example the assistant on Bedrock while extraction stays on the DGX.
+    assistant_backend: str = ""
+    assistant_model: str = ""
+    assistant_max_steps: int = 5
 
     embedding_model: str = "nomic-ai/nomic-embed-text-v1.5"
     file_dir: str = "./data/uploads"

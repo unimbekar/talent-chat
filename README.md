@@ -76,11 +76,12 @@ Open `/chat`. Visitors ask in their own words about open jobs: a skill, a city, 
 
 ## Recruiter desk
 
-Sign in at `/admin`. The header links are Jobs, Candidates, Pipeline, Ingest, Find, Match, and Review. Find is described in [Find candidates](#find-candidates). Ingest is described in [Ingest résumés](#ingest-résumés). Submissions are described in [Submission pipeline](#submission-pipeline).
+Sign in at `/admin`. The header links are Jobs, Candidates, Pipeline, Reports, Ingest, Find, Match, and Review. Find is described in [Find candidates](#find-candidates). Ingest is described in [Ingest résumés](#ingest-résumés). Submissions are described in [Submission pipeline](#submission-pipeline). Reports are described in [Reports](#reports).
 
 - **Jobs.** Open postings from the careers crawl. Each job page shows the full description, the mandatory and desired lines from the posting, and résumés that cover at least 50% of the mandatory lines. Each matching candidate shows an email and a location, or “unknown” when either is missing. Check the people you want, then copy their addresses as a comma-separated list. Nothing is sent. Close a job with a note that explains why. Closed jobs stay closed when the careers page is crawled again, and the note stays with the job so you can read it later. Reopen puts the job back on the open list. A posting that disappears from the careers page is closed with the note “No longer listed on the careers page.”
 - **Candidates.** The newest résumé on file for each person, with search and pages. Each row shows email and location, or “unknown”. Copy the addresses on the current page, copy every address in the desk as one comma-separated list, or check a few people and copy only those. Duplicate addresses are left out. Nothing is sent. A name opens that person’s profile: every job they have been submitted for, and notes that follow them.
 - **Pipeline.** A submission is one person sent for one job. The stages are Submitted, Salary, Interviewed, Offer, and Selected. Rejected and Withdrawn end it and stay on the history. Salary is stored on that submission, so the same person can have a different number on another job. Comments sit on the submission and, separately, on the person. Delete removes a mistake. Withdraw keeps the record.
+- **Reports.** Today, the last 7 days, the last 30 days, or a custom range. The page counts résumés ingested, submissions opened, and selected, rejected, or withdrawn moves. It lists people with a full-scope polygraph (FSP) or another clearance filter, and submissions whose recorded salary is greater than an amount you type. Charts cover daily activity, stage mix, clearance mix, salary bands, and the live pipeline. Export one list as CSV or the whole report as an Excel workbook.
 - **Ingest.** Point at a folder and import every résumé in it. See [Ingest résumés](#ingest-résumés).
 - **Match.** Upload a PDF, DOC, DOCX, or TXT, or open a résumé already on file. An empty file, a wrong type, or a file with almost no text shows a colored message. While the résumé is ranking, a progress bar stays on the page. Skills on the profile are tools and languages. Confirming ranks the résumé against open jobs. A card appears only when mandatory coverage is at least 50%. A strong match is at least 90%. Desired coverage is a separate percent and does not lower the mandatory score.
 - **Review.** Pick one job and one résumé. The screen shows the mandatory and desired percents, the posting lines the résumé covers, and the lines it is still missing. When the résumé’s role and the job’s role do not overlap, the screen says so and shared wording is not counted.
@@ -98,6 +99,51 @@ A job page lists everyone submitted for that requisition. A candidate profile li
 ![Where a submission is edited](docs/diagrams/34-submission-screens.png)
 
 The public chat cannot read submissions, comments, or salary. Those tables are granted only to the recruiter database role.
+
+## Reports
+
+Open Reports. The range is this computer’s calendar: Today is local midnight through the end of today. A longer range groups the activity chart by week.
+
+Salary on a report is the yearly amount saved on that submission. The desk does not guess a number out of the résumé text. A row appears only when the saved amount is greater than the figure you enter.
+
+Clearance filters default to a full-scope polygraph, which is how FSP and “full scope” are stored. The polygraph and clearance bar charts always describe the whole desk, so you can see how rare a filter is before you export the matching names.
+
+The public chat cannot open Reports.
+
+## Desk assistant and quick search
+
+Every recruiter page has **Ask the desk** in the lower right corner, or press Ctrl+J. The panel knows which page is open. On a job page, “Who fits this job?” means that job. On the Pipeline page, “What’s stuck?” means the board. The conversation carries across pages until you choose New chat.
+
+The assistant reads through the same code as the pages, so its numbers match the screens. It has ten read-only lookups: find candidates, a candidate profile, find jobs, job details, ranked candidates for a job, fit check, pipeline, submission details, desk counts, and reports. Each answer shows the lookups it ran and the rows behind it, with Show all, Copy emails, and CSV.
+
+It cannot change records. Ask it to close a job or move a submission and it points you to the page that does. A number or code in an answer must come from a lookup in that turn. If the model answers without looking anything up, the desk drops that answer and runs the Find page’s rule search instead. The same search runs when the model is down. A requisition code that does not exist is shown as “(unknown code)”.
+
+Quick search (Ctrl+K, or **Search** in the header) matches jobs, candidates, and submissions as you type. Every word must match. Its last row hands the text to the assistant.
+
+### Choose the model
+
+The assistant uses `LLM_BACKEND`, `LLM_BASE_URL`, and `LLM_MODEL` unless these override them:
+
+| Setting | Meaning |
+| --- | --- |
+| `ASSISTANT_BACKEND` | `openai_compat` (Ollama, vLLM) or `bedrock` |
+| `ASSISTANT_MODEL` | Model name or Bedrock model ID |
+| `ASSISTANT_MAX_STEPS` | Lookups per answer, default 5 |
+| `LLM_REASONING_EFFORT` | `none` turns off Qwen thinking on Ollama. Leave it empty for a server that rejects the field. |
+
+To move to AWS, set `ASSISTANT_BACKEND=bedrock`, `ASSISTANT_MODEL` to a Converse model with tool use (for example `us.anthropic.claude-sonnet-4-5-20250929-v1:0` or `us.amazon.nova-pro-v1:0`), and `AWS_REGION`, then restart the api container. Bedrock receives the same tools through the Converse API.
+
+To test a question from the shell without the browser:
+
+```bash
+cd api
+DATABASE_URL=postgresql+psycopg://app_admin:…@127.0.0.1:5432/talent \
+LLM_BASE_URL=http://127.0.0.1:11434/v1 \
+.venv/bin/python scripts/assistant_probe.py "Who fits A1001?" "Tell me about the first one" \
+  --page '{"path": "/admin/jobs/A1001", "job_code": "A1001"}'
+```
+
+Set those variables on the command only. Do not export them: the test suite refuses to run unless every database URL names a `*_test` database, and that guard is the only thing between pytest and the live data.
 
 ## Ingest résumés
 

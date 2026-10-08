@@ -130,7 +130,15 @@ def model_filters(question: str, llm: LLMClient) -> Filters:
     contain. Roles count only when the question uses a role word such as "engineers".
     """
     raw = llm.complete(system=QUERY_SYSTEM, user=question, temperature=0.0, json_mode=True)
-    data = parse_json_content(raw)
+    return ground_filters(parse_json_content(raw), question)
+
+
+def ground_filters(data: dict, question: str, add_named: bool = True) -> Filters:
+    """Keep only the filters in data that question supports. data uses the QUERY_SYSTEM keys.
+
+    add_named also adds the states and skills the rule parser finds in question. The assistant
+    turns it off, because its question is several recent messages, not one search.
+    """
     rules = rule_filters(question)
     named = set(rules.states)
 
@@ -145,7 +153,8 @@ def model_filters(question: str, llm: LLMClient) -> Filters:
     states = _grounded_states(data.get("states"), named, cities)
     exclude = [code for code in _grounded_states(data.get("exclude_states"), named, cities) if code not in states]
     # A state the recruiter named but the model placed in neither list is still a filter.
-    states += [code for code in rules.states if code not in states and code not in exclude]
+    if add_named:
+        states += [code for code in rules.states if code not in states and code not in exclude]
 
     skills: list[str] = []
     keywords: list[str] = []
@@ -162,13 +171,14 @@ def model_filters(question: str, llm: LLMClient) -> Filters:
     if _ROLE_WORD.search(question):
         for value in _str_list(data.get("roles")):
             categories.extend(categories_for_question(value))
-        categories.extend(rules.categories)
+        if add_named:
+            categories.extend(rules.categories)
 
     for value in _str_list(data.get("keywords")):
         if _in_question(value, question) and not state_code(value):
             keywords.append(value)
 
-    all_skills = _unique(skills + rules.skills)
+    all_skills = _unique(skills + (rules.skills if add_named else []))
     taken = {name.lower() for name in all_skills}
     return Filters(
         skills=all_skills,
@@ -220,8 +230,12 @@ class FindResult:
 
 
 def find_candidates(session: Session, question: str, llm: LLMClient | None) -> FindResult:
-    filters = read_filters(question, llm)
-    if filters.empty():
+    return run_filters(session, read_filters(question, llm), question)
+
+
+def run_filters(session: Session, filters: Filters, question: str, extra: list | None = None) -> FindResult:
+    """extra holds more SQL clauses on Candidate, such as a clearance level."""
+    if filters.empty() and not extra:
         stmt = select(Candidate)
         if question:
             pattern = _like(question)
@@ -235,7 +249,7 @@ def find_candidates(session: Session, question: str, llm: LLMClient | None) -> F
         rows = session.scalars(stmt.order_by(nullslast(func.lower(Candidate.full_name))).limit(RESULT_LIMIT)).all()
         return FindResult(rows=list(rows), filters=filters, unknown_location=0, fallback=True)
 
-    profile = _profile_clauses(filters)
+    profile = _profile_clauses(filters) + list(extra or [])
     stmt = select(Candidate)
     if profile:
         stmt = stmt.where(and_(*profile))

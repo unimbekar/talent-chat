@@ -3,7 +3,7 @@
 import hashlib
 import math
 
-from app.core.llm import LLMError
+from app.core.llm import ChatEvent, LLMError, ToolCall
 
 
 def unit_vector(text: str) -> list[float]:
@@ -44,3 +44,36 @@ class RecordingLLM:
         if json_mode:
             return "{}"
         return self.text
+
+
+def say(text: str) -> list[ChatEvent]:
+    """A scripted model reply made of text, streamed in two pieces."""
+    half = len(text) // 2
+    return [ChatEvent("text", text=text[:half]), ChatEvent("text", text=text[half:]), ChatEvent("done", usage={"prompt_tokens": 10, "completion_tokens": 5})]
+
+
+def call(name: str, arguments: dict | None = None, call_id: str | None = None) -> list[ChatEvent]:
+    return [
+        ChatEvent("tool_call", call=ToolCall(call_id or f"call_{name}", name, arguments or {})),
+        ChatEvent("done", usage={"prompt_tokens": 10, "completion_tokens": 5}),
+    ]
+
+
+class ScriptedChatLLM(RecordingLLM):
+    """Plays back one scripted reply per stream_chat call. A reply of None raises LLMError."""
+
+    def __init__(self, replies: list[list[ChatEvent] | None]) -> None:
+        super().__init__()
+        self.replies = list(replies)
+        self.chats: list[dict] = []
+
+    def stream_chat(self, messages, tools, *, temperature=0.1, max_tokens=1200, require_tool=False):
+        self.chats.append(
+            {"messages": [dict(m) for m in messages], "tools": [t["name"] for t in tools], "require_tool": require_tool}
+        )
+        if not self.replies:
+            raise AssertionError("the model was called more times than scripted")
+        reply = self.replies.pop(0)
+        if reply is None:
+            raise LLMError("model endpoint stopped")
+        yield from reply

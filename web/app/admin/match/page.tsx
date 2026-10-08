@@ -64,6 +64,59 @@ function MatchPage() {
   const [fileName, setFileName] = useState("");
   const loadGeneration = useRef(0);
   const candidateId = params.get("id") || "";
+  const [submitted, setSubmitted] = useState<Record<string, SubmissionLink>>({});
+  const [submittingCode, setSubmittingCode] = useState<string | null>(null);
+  const [submissionReload, setSubmissionReload] = useState(0);
+
+  useEffect(() => {
+    const id = profile?.id;
+    if (!id) {
+      setSubmitted({});
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/admin/pipeline?scope=all&candidate_id=${id}`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        const index: Record<string, SubmissionLink> = {};
+        for (const row of data.submissions || []) {
+          if (row.job?.requisition_code) index[row.job.requisition_code] = { id: row.id, label: row.stage_label };
+        }
+        setSubmitted(index);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.id, submissionReload]);
+
+  async function submitTo(code: string) {
+    if (!profile || submittingCode) return;
+    setSubmittingCode(code);
+    try {
+      const response = await fetch("/api/admin/submissions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidate_id: profile.id, requisition_code: code }),
+      });
+      if (response.status === 401) {
+        router.push("/admin/login");
+        return;
+      }
+      const data = await readBody(response);
+      if (!response.ok && response.status !== 409) {
+        setNotice({ tone: "error", text: submissionError(data) || "The submission was not created." });
+        return;
+      }
+      setNotice({ tone: "ok", text: `${profile.full_name || "This candidate"} is submitted for ${code}.` });
+      setSubmissionReload((value) => value + 1);
+    } catch {
+      setNotice({ tone: "error", text: "The submission was not created." });
+    } finally {
+      setSubmittingCode(null);
+    }
+  }
 
   async function openCandidate(id: string) {
     const response = await fetch(`/api/admin/resumes/${id}`);
@@ -337,6 +390,10 @@ function MatchPage() {
               requiredText={requiredByJob[row.requisition_code] || ""}
               onRequiredChange={(value) => setRequiredByJob((current) => ({ ...current, [row.requisition_code]: value }))}
               resumeNames={resumeNames}
+              candidateId={profile?.id || candidateId}
+              submission={submitted[row.requisition_code]}
+              submitting={submittingCode === row.requisition_code}
+              onSubmit={() => submitTo(row.requisition_code)}
             />
           ))}
         </section>
@@ -396,6 +453,14 @@ async function readBody(response: Response): Promise<ApiBody> {
   }
 }
 
+type SubmissionLink = { id: string; label: string };
+
+function submissionError(data: { detail?: unknown }): string {
+  const detail = data.detail as { message?: unknown } | undefined;
+  if (detail && typeof detail === "object" && typeof detail.message === "string") return detail.message;
+  return detailOf(data);
+}
+
 function detailOf(data: { detail?: unknown }): string {
   if (typeof data.detail === "string") return data.detail;
   if (Array.isArray(data.detail)) {
@@ -412,11 +477,19 @@ function MatchCard({
   requiredText,
   onRequiredChange,
   resumeNames,
+  candidateId,
+  submission,
+  submitting,
+  onSubmit,
 }: {
   row: MatchRow;
   requiredText: string;
   onRequiredChange: (value: string) => void;
   resumeNames: string[];
+  candidateId: string;
+  submission?: SubmissionLink;
+  submitting: boolean;
+  onSubmit: () => void;
 }) {
   const requirement = requirementStatus(requiredText, resumeNames);
   const strong = row.meets_bar && requirement.missing.length === 0;
@@ -437,7 +510,31 @@ function MatchCard({
           </Link>
           <p className="truncate text-xs text-ink/60">{row.location}</p>
         </div>
-        {strong && <span className="rounded-full bg-pine/10 px-2.5 py-1 text-xs font-medium text-pine">Strong match</span>}
+        <div className="flex flex-col items-end gap-2">
+          {strong && <span className="rounded-full bg-pine/10 px-2.5 py-1 text-xs font-medium text-pine">Strong match</span>}
+          {candidateId && (
+            <div className="flex flex-wrap justify-end gap-3 text-sm">
+              {submission ? (
+                <Link href={`/admin/submissions/${submission.id}`} className="text-pine hover:underline">
+                  {submission.label}
+                </Link>
+              ) : (
+                <button type="button" className="text-pine hover:underline disabled:opacity-50" disabled={submitting} onClick={onSubmit}>
+                  {submitting ? "Submitting…" : "Submit"}
+                </button>
+              )}
+              <Link href={`/admin/candidates/${candidateId}`} className="text-pine hover:underline">
+                Profile
+              </Link>
+              <Link href={`/admin/review?job=${row.requisition_code}&candidate=${candidateId}`} className="text-pine hover:underline">
+                Review
+              </Link>
+              <a href={`/api/admin/resumes/${candidateId}/file`} target="_blank" rel="noopener noreferrer" className="text-pine hover:underline">
+                Open résumé
+              </a>
+            </div>
+          )}
+        </div>
       </div>
       <div className="mt-3 grid grid-cols-2 items-stretch gap-2">
         <ScorePane

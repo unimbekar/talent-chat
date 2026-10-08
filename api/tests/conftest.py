@@ -6,6 +6,10 @@ from pathlib import Path
 os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://app_admin:admin@127.0.0.1:5432/talent_test")
 os.environ.setdefault("DATABASE_PUBLIC_URL", "postgresql+psycopg://app_public:public@127.0.0.1:5432/talent_test")
 os.environ.setdefault("DATABASE_MIGRATE_URL", "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/talent_test")
+for _name in ("DATABASE_URL", "DATABASE_PUBLIC_URL", "DATABASE_MIGRATE_URL"):
+    # The db fixture truncates every table. A URL left in the shell must never point it at real data.
+    if not os.environ[_name].rsplit("/", 1)[-1].split("?", 1)[0].endswith("_test"):
+        raise SystemExit(f"{_name} must name a *_test database for the test suite, not {os.environ[_name].rsplit('/', 1)[-1]}")
 os.environ.setdefault("CRAWL_ON_START", "false")
 os.environ.setdefault("WARM_RESUME_CACHE", "false")
 os.environ.setdefault("SESSION_SECRET", "test-session-secret")

@@ -9,7 +9,9 @@ import uuid
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from app.admin.assistant.routes import router as assistant_router
 from app.admin.pipeline import router as pipeline_router
+from app.admin.reports import router as reports_router
 from app.admin.routes import router as admin_router
 from app.config import get_settings
 from app.core.crawler import HttpFetcher, run_crawl
@@ -97,6 +99,8 @@ def create_app() -> FastAPI:
     app.include_router(public_router)
     app.include_router(admin_router)
     app.include_router(pipeline_router)
+    app.include_router(reports_router)
+    app.include_router(assistant_router)
 
     @app.middleware("http")
     async def request_id(request: Request, call_next):

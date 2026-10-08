@@ -48,6 +48,26 @@ def store_original(data: bytes, digest: str, s3_client=None) -> str:
     return LocalFileStore(settings.file_dir).put(digest, data)
 
 
+def read_stored(locator: str | None, s3_client=None) -> bytes | None:
+    if not locator:
+        return None
+    if locator.startswith("s3://"):
+        bucket, separator, key = locator.removeprefix("s3://").partition("/")
+        if not separator or not bucket or not key:
+            return None
+        client = s3_client
+        if client is None:
+            import boto3
+
+            client = boto3.client("s3", region_name=get_settings().aws_region)
+        try:
+            return client.get_object(Bucket=bucket, Key=key)["Body"].read()
+        except Exception:
+            return None
+    path = Path(locator)
+    return path.read_bytes() if path.is_file() else None
+
+
 def delete_stored(locator: str | None, s3_client=None) -> None:
     if not locator:
         return
