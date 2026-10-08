@@ -249,8 +249,11 @@ export default function FindPage() {
                     }}
                   />
                   <div>
-                    <Link href={`/admin/match?id=${person.id}`} className="font-medium hover:text-pine">
+                    <Link href={`/admin/candidates/${person.id}`} className="font-medium hover:text-pine">
                       {person.full_name || "Unnamed résumé"}
+                    </Link>
+                    <Link href={`/admin/match?id=${person.id}`} className="ml-2 text-xs text-pine hover:underline">
+                      Rank
                     </Link>
                     <p className="text-xs text-ink/60">{person.titles.join(", ")}</p>
                     <p className="text-xs text-ink/80">Email: {shown(person.email)}</p>

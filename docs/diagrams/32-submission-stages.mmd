@@ -1,0 +1,17 @@
+flowchart TD
+    start["Recruiter submits one candidate for one job"] --> submitted["Submitted<br/>the résumé was sent"]
+    submitted --> salary["Salary<br/>yearly amount for this job"]
+    salary --> interviewed["Interviewed"]
+    interviewed --> offer["Offer"]
+    offer --> selected["Selected<br/>stays on the working board"]
+    submitted --> ended{"Stop this submission"}
+    salary --> ended
+    interviewed --> ended
+    offer --> ended
+    ended --> rejected["Rejected<br/>kept in history"]
+    ended --> withdrawn["Withdrawn<br/>kept in history"]
+    rejected --> submitted
+    withdrawn --> submitted
+    selected --> kept["Each move is appended.<br/>Earlier stages stay on the record."]
+    rejected --> kept
+    withdrawn --> kept

@@ -51,7 +51,7 @@ from app.core.skills import normalize_skill_list
 from app.core.structure import skills_from_quotes
 from app.core.structure import parse_resume_profile, structure_job
 from app.core.tokens import chunk_text, job_vector_text
-from app.db import admin_session, get_admin_db
+from app.db import get_admin_db
 from app.models import AuditLog, CrawlState, Job, JobChunk, Match, SkillSynonym
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -254,6 +254,7 @@ def overview(session: Session = Depends(require_admin)):
         },
         "top_skills": [{"name": name, "count": total} for name, total in skills.most_common(12)],
         "top_states": [{"state": code, "count": total} for code, total in states],
+        "pipeline": _pipeline_counts(session),
         "recent_candidates": [
             {
                 "id": str(row.id),
@@ -279,7 +280,7 @@ def list_jobs(session: Session = Depends(require_admin)):
             "last_finished_at": None if state is None or state.last_finished_at is None else state.last_finished_at.isoformat(),
             "last_rows": None if state is None else state.last_rows,
         },
-        "jobs": [_job_out(job) for job in jobs],
+        "jobs": [_job_with_submissions(session, job) for job in jobs],
     }
 
 
@@ -992,7 +993,9 @@ def _enrich_admin_description(job_id, digest: str, keep_skills: bool, llm, embed
     Skipped when a newer save replaced the text. keep_skills leaves the recruiter's
     must/nice lists alone when they were sent with the same save.
     """
-    session = admin_session()
+    from app.db import admin_session as open_session
+
+    session = open_session()
     try:
         job = session.get(Job, job_id)
         if job is None or job.description_hash != digest:
@@ -1034,6 +1037,28 @@ def _enrich_admin_description(job_id, digest: str, keep_skills: bool, llm, embed
         logger.exception("Background read of job description failed for %s", job_id)
     finally:
         session.close()
+
+
+def _pipeline_counts(session: Session) -> dict:
+    from app.admin.pipeline import CLOSED_STAGES, counts_by_stage
+
+    counts = counts_by_stage(session)
+    return {
+        "active": sum(total for key, total in counts.items() if key not in CLOSED_STAGES),
+        "selected": counts.get("selected", 0),
+        "rejected": counts.get("rejected", 0),
+        "withdrawn": counts.get("withdrawn", 0),
+    }
+
+
+def _job_with_submissions(session: Session, job: Job) -> dict:
+    from app.models import Submission
+
+    payload = _job_out(job)
+    payload["submission_count"] = session.scalar(
+        select(func.count()).select_from(Submission).where(Submission.job_id == job.id)
+    ) or 0
+    return payload
 
 
 def _job_out(job: Job) -> dict:

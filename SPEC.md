@@ -369,6 +369,8 @@ Phase 1 screens:
 3. **Match.** Upload PDF, DOCX, or TXT, or open a résumé already on file. A duplicate file opens the existing candidate. Review parsed fields. Skills are tools and languages. Confirm ranks open jobs. Each card shows mandatory coverage and desired coverage. Cards under 50% mandatory are hidden. A strong match covers at least 90% of the mandatory lines.
 4. **Review.** Choose one job and one résumé. Show both percents, the posting lines covered, and the posting lines still missing.
 
+**Submission pipeline.** A recruiter submits one candidate to one job. The stages are `submitted`, `salary`, `interviewed`, `offer`, `selected`, `rejected`, and `withdrawn`. Selected, rejected, and withdrawn are terminal, but rejected and withdrawn are the only ones hidden from the working board. Salary is an integer yearly amount plus a note, stored on the submission so two jobs can carry different numbers for the same person. Stage and salary changes append to `submission_events` and are not edited. Comments on a submission and comments on a candidate support create, edit, and delete. One submission per candidate and job. A job page lists its submissions. A candidate profile lists every job that person was submitted for, including ended ones. The public role cannot read these tables. Deleting a candidate deletes their submissions.
+
 Phase 2 adds:
 
 5. **Ingest.** Last poll time, last error, files imported, files rejected, button to poll now, button to run backfill.

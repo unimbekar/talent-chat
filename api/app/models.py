@@ -4,7 +4,7 @@ from datetime import datetime
 import uuid
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Boolean, Computed, DateTime, Float, ForeignKey, Integer, Text, func
+from sqlalchemy import Boolean, Computed, DateTime, Float, ForeignKey, Integer, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, validates
 
@@ -142,6 +142,78 @@ class Match(Base):
     job_quotes: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
     resume_quotes: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
     explanation: Mapped[str | None] = mapped_column(Text)
+
+
+class Submission(Base):
+    """One person sent for one job. The row stays after the submission ends."""
+
+    __tablename__ = "submissions"
+    __table_args__ = (UniqueConstraint("candidate_id", "job_id", name="uq_submissions_candidate_job"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    candidate_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("candidates.id", ondelete="CASCADE"), index=True)
+    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    stage: Mapped[str] = mapped_column(Text, default="submitted", index=True)
+    salary_usd: Mapped[int | None] = mapped_column(Integer)
+    salary_note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    candidate: Mapped[Candidate] = relationship()
+    job: Mapped[Job] = relationship()
+    events: Mapped[list["SubmissionEvent"]] = relationship(
+        back_populates="submission", cascade="all, delete-orphan", order_by="SubmissionEvent.at"
+    )
+    comments: Mapped[list["SubmissionComment"]] = relationship(
+        back_populates="submission", cascade="all, delete-orphan", order_by="SubmissionComment.created_at"
+    )
+
+
+class SubmissionEvent(Base):
+    """Append-only record of a stage change or a salary change."""
+
+    __tablename__ = "submission_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    submission_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("submissions.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(Text)
+    from_stage: Mapped[str | None] = mapped_column(Text)
+    to_stage: Mapped[str | None] = mapped_column(Text)
+    body: Mapped[str | None] = mapped_column(Text)
+    salary_usd: Mapped[int | None] = mapped_column(Integer)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    submission: Mapped[Submission] = relationship(back_populates="events")
+
+
+class SubmissionComment(Base):
+    """A note on one submission. Recruiters can edit or remove it."""
+
+    __tablename__ = "submission_comments"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    submission_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("submissions.id", ondelete="CASCADE"), index=True
+    )
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    submission: Mapped[Submission] = relationship(back_populates="comments")
+
+
+class CandidateComment(Base):
+    """A note about the person, kept across every job they are submitted for."""
+
+    __tablename__ = "candidate_comments"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("candidates.id", ondelete="CASCADE"), index=True
+    )
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    candidate: Mapped[Candidate] = relationship()
 
 
 class SkillSynonym(Base):

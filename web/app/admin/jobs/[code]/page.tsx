@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
+import { JobSubmissions, type SubmissionIndex } from "@/components/job-submissions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { BackButton } from "@/components/back-button";
@@ -69,6 +70,9 @@ export default function JobDetailPage() {
   const [copyNote, setCopyNote] = useState("");
   const [closeNote, setCloseNote] = useState("");
   const [closing, setClosing] = useState(false);
+  const [submitted, setSubmitted] = useState<SubmissionIndex>({});
+  const [submissionReload, setSubmissionReload] = useState(0);
+  const [submittingId, setSubmittingId] = useState<string | null>(null);
 
   useEffect(() => {
     function showJob(data: JobDetail) {
@@ -186,6 +190,33 @@ export default function JobDetailPage() {
     }
   }
 
+  async function submitMatch(candidateId: string) {
+    setSubmittingId(candidateId);
+    setMessage("");
+    try {
+      const response = await fetch("/api/admin/submissions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidate_id: candidateId, requisition_code: code }),
+      });
+      if (response.status === 401) {
+        router.push("/admin/login");
+        return;
+      }
+      if (!response.ok && response.status !== 409) {
+        const data = await response.json().catch(() => ({}));
+        setMessage(data.detail?.message || data.detail || "The submission was not created.");
+        return;
+      }
+      setSubmissionReload((value) => value + 1);
+      setMessage("Submitted for this job.");
+    } catch {
+      setMessage("The submission was not created.");
+    } finally {
+      setSubmittingId(null);
+    }
+  }
+
   async function save(event: FormEvent) {
     event.preventDefault();
     if (saving || !job) return;
@@ -279,6 +310,8 @@ export default function JobDetailPage() {
         </section>
       )}
 
+      <JobSubmissions code={code} reload={submissionReload} onIndex={setSubmitted} />
+
       <section id="candidates" className="scroll-mt-6 panel p-4">
         <h2 className="font-serif text-xl">Matching candidates</h2>
         <p className="page-lead">Résumés that cover at least 50% of the mandatory lines. A strong match covers at least 90%.</p>
@@ -329,7 +362,9 @@ export default function JobDetailPage() {
         <div className="mt-3 flex flex-col gap-2">
           {!candidatesLoaded && <p className="text-sm text-ink/60">Scoring résumés against this job…</p>}
           {candidatesLoaded && candidates.length === 0 && <p className="text-sm text-ink/60">No résumé covers at least 50% of the mandatory lines.</p>}
-          {candidates.map((candidate) => (
+          {candidates.map((candidate) => {
+            const existing = submitted[candidate.id];
+            return (
             <article key={candidate.id} className={`rounded-lg border px-3 py-3 ${candidate.meets_bar ? "border-pine" : "border-line"}`}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex min-w-0 items-start gap-3">
@@ -348,6 +383,23 @@ export default function JobDetailPage() {
                   </div>
                 </div>
                 <div className="flex gap-3 text-sm">
+                  {existing ? (
+                    <Link href={`/admin/submissions/${existing.id}`} className="text-pine hover:underline">
+                      {existing.label}
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      className="text-pine hover:underline disabled:opacity-50"
+                      disabled={submittingId === candidate.id}
+                      onClick={() => submitMatch(candidate.id)}
+                    >
+                      {submittingId === candidate.id ? "Submitting…" : "Submit"}
+                    </button>
+                  )}
+                  <Link href={`/admin/candidates/${candidate.id}`} className="text-pine hover:underline">
+                    Profile
+                  </Link>
                   <Link href={`/admin/review?job=${job.requisition_code}&candidate=${candidate.id}`} className="text-pine hover:underline">
                     Review
                   </Link>
@@ -361,7 +413,8 @@ export default function JobDetailPage() {
                 <CandidateScore label="Desired" percent={candidate.desired_pct} hit={candidate.desired_hit} total={candidate.desired_total} strong={false} />
               </div>
             </article>
-          ))}
+            );
+          })}
         </div>
       </section>
 

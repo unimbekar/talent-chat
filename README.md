@@ -76,15 +76,28 @@ Open `/chat`. Visitors ask in their own words about open jobs: a skill, a city, 
 
 ## Recruiter desk
 
-Sign in at `/admin`. The header links are Jobs, Candidates, Ingest, Find, Match, and Review. Find is described in [Find candidates](#find-candidates). Ingest is described in [Ingest résumés](#ingest-résumés).
+Sign in at `/admin`. The header links are Jobs, Candidates, Pipeline, Ingest, Find, Match, and Review. Find is described in [Find candidates](#find-candidates). Ingest is described in [Ingest résumés](#ingest-résumés). Submissions are described in [Submission pipeline](#submission-pipeline).
 
 - **Jobs.** Open postings from the careers crawl. Each job page shows the full description, the mandatory and desired lines from the posting, and résumés that cover at least 50% of the mandatory lines. Each matching candidate shows an email and a location, or “unknown” when either is missing. Check the people you want, then copy their addresses as a comma-separated list. Nothing is sent. Close a job with a note that explains why. Closed jobs stay closed when the careers page is crawled again, and the note stays with the job so you can read it later. Reopen puts the job back on the open list. A posting that disappears from the careers page is closed with the note “No longer listed on the careers page.”
-- **Candidates.** The newest résumé on file for each person, with search and pages. Each row shows email and location, or “unknown”. Copy the addresses on the current page, copy every address in the desk as one comma-separated list, or check a few people and copy only those. Duplicate addresses are left out. Nothing is sent.
+- **Candidates.** The newest résumé on file for each person, with search and pages. Each row shows email and location, or “unknown”. Copy the addresses on the current page, copy every address in the desk as one comma-separated list, or check a few people and copy only those. Duplicate addresses are left out. Nothing is sent. A name opens that person’s profile: every job they have been submitted for, and notes that follow them.
+- **Pipeline.** A submission is one person sent for one job. The stages are Submitted, Salary, Interviewed, Offer, and Selected. Rejected and Withdrawn end it and stay on the history. Salary is stored on that submission, so the same person can have a different number on another job. Comments sit on the submission and, separately, on the person. Delete removes a mistake. Withdraw keeps the record.
 - **Ingest.** Point at a folder and import every résumé in it. See [Ingest résumés](#ingest-résumés).
 - **Match.** Upload a PDF, DOC, DOCX, or TXT, or open a résumé already on file. An empty file, a wrong type, or a file with almost no text shows a colored message. While the résumé is ranking, a progress bar stays on the page. Skills on the profile are tools and languages. Confirming ranks the résumé against open jobs. A card appears only when mandatory coverage is at least 50%. A strong match is at least 90%. Desired coverage is a separate percent and does not lower the mandatory score.
 - **Review.** Pick one job and one résumé. The screen shows the mandatory and desired percents, the posting lines the résumé covers, and the lines it is still missing. When the résumé’s role and the job’s role do not overlap, the screen says so and shared wording is not counted.
 
 A tool named in the job title has to be on the résumé. A Salesforce Developer posting does not list a résumé that never names Salesforce. A cybersecurity résumé is not listed against a Data Scientist job on the strength of generic words such as analysis or systems.
+
+## Submission pipeline
+
+Open Pipeline, a job page, or a candidate profile.
+
+![Submission stages](docs/diagrams/32-submission-stages.png)
+
+A job page lists everyone submitted for that requisition. A candidate profile lists every job that person has been submitted for, including ones that already ended. The stage history on a submission is append-only: moving someone from Rejected back to Submitted keeps the earlier rejection.
+
+![Where a submission is edited](docs/diagrams/34-submission-screens.png)
+
+The public chat cannot read submissions, comments, or salary. Those tables are granted only to the recruiter database role.
 
 ## Ingest résumés
 

@@ -84,6 +84,27 @@ The stored match row still keeps `skill_score`, `semantic`, and `final` from `SP
 
 `/admin/review` takes a job and a résumé and shows mandatory coverage, desired coverage, the lines that matched, and the lines still missing. The same comparison is linked from each candidate on a job page. A tool named in the job title and absent from the résumé is called out on that screen. The job’s candidate list omits that résumé even when other lines match.
 
+### 4.6 Submission pipeline
+
+![Submission stages](docs/diagrams/32-submission-stages.png)
+
+A submission is one candidate sent for one job. There is one row per pair. The row is not removed when the submission ends, so a candidate profile can list every job that person was submitted for.
+
+![Submission tables](docs/diagrams/33-submission-model.png)
+
+| Table | What it keeps |
+| --- | --- |
+| `submissions` | Current stage, yearly salary, and a short salary note. Unique on candidate and job. |
+| `submission_events` | Append-only stage and salary changes, including the note written with the change. |
+| `submission_comments` | Editable notes about this submission. |
+| `candidate_comments` | Editable notes about the person, across jobs. |
+
+Stages, in order: submitted, salary, interviewed, offer, selected. Rejected and withdrawn leave the working board and stay in history. Moving back to an earlier stage writes another event; it does not erase the old one. Deleting a submission is only for a record that should never have existed, and it removes the events and comments with it.
+
+`app_public` cannot read these tables. Nothing under `app/public/` serves them.
+
+![Submission screens](docs/diagrams/34-submission-screens.png)
+
 ---
 
 ## 5. Embedding model and token sizes

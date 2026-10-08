@@ -9,6 +9,7 @@ import uuid
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from app.admin.pipeline import router as pipeline_router
 from app.admin.routes import router as admin_router
 from app.config import get_settings
 from app.core.crawler import HttpFetcher, run_crawl
@@ -95,6 +96,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title=get_settings().company_name, lifespan=lifespan)
     app.include_router(public_router)
     app.include_router(admin_router)
+    app.include_router(pipeline_router)
 
     @app.middleware("http")
     async def request_id(request: Request, call_next):

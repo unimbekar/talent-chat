@@ -342,7 +342,7 @@ export default function CandidatesPage() {
                       }}
                     />
                     <div className="min-w-0">
-                    <Link href={`/admin/match?id=${candidate.id}`} className="truncate font-medium hover:text-pine">
+                    <Link href={`/admin/candidates/${candidate.id}`} className="truncate font-medium hover:text-pine">
                       {candidate.full_name || candidate.original_filename || "Unnamed résumé"}
                     </Link>
                     <p className="truncate text-xs text-ink/60">
@@ -350,6 +350,11 @@ export default function CandidatesPage() {
                     </p>
                     <p className="text-xs text-ink/80">Email: {shown(candidate.email)}</p>
                     <p className="text-xs text-ink/80">Location: {shown(candidate.location)}</p>
+                    <p className="mt-1 text-xs">
+                      <Link href={`/admin/match?id=${candidate.id}`} className="text-pine hover:underline">
+                        Rank against jobs
+                      </Link>
+                    </p>
                     {candidate.skills.length > 0 && (
                       <p className="mt-1 truncate text-xs text-ink/50">{candidate.skills.join(" · ")}</p>
                     )}

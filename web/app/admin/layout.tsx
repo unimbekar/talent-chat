@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Briefcase, ClipboardCheck, FolderInput, LayoutDashboard, LogOut, Search, Target, Users } from "lucide-react";
+import { Briefcase, ClipboardCheck, FolderInput, LayoutDashboard, LogOut, Route, Search, Target, Users } from "lucide-react";
 
 import { BrandMark, useBrand } from "@/components/brand";
 
@@ -11,6 +11,7 @@ const NAV = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/jobs", label: "Jobs", icon: Briefcase },
   { href: "/admin/candidates", label: "Candidates", icon: Users },
+  { href: "/admin/pipeline", label: "Pipeline", icon: Route },
   { href: "/admin/find", label: "Find", icon: Search },
   { href: "/admin/match", label: "Match", icon: Target },
   { href: "/admin/review", label: "Review", icon: ClipboardCheck },

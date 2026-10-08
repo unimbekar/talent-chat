@@ -416,8 +416,11 @@ function ReviewRow({ review, position, open, onToggle }: { review: Review; posit
         {position != null && <span className="w-6 shrink-0 font-mono text-sm text-ink/50">{position}</span>}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Link href={`/admin/match?id=${review.candidate.id}`} className="truncate font-medium hover:text-pine">
+            <Link href={`/admin/candidates/${review.candidate.id}`} className="truncate font-medium hover:text-pine">
               {name}
+            </Link>
+            <Link href={`/admin/match?id=${review.candidate.id}`} className="text-xs text-pine hover:underline">
+              Rank
             </Link>
             {review.meets_bar && <span className="rounded-full bg-pine/10 px-2 py-0.5 text-xs font-medium text-pine">Strong match</span>}
           </div>

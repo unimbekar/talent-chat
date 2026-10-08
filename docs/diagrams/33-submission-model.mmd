@@ -1,0 +1,41 @@
+erDiagram
+    candidates ||--o{ submissions : "submitted for"
+    jobs ||--o{ submissions : "receives"
+    submissions ||--o{ submission_events : "stage and salary history"
+    submissions ||--o{ submission_comments : "notes on this job"
+    candidates ||--o{ candidate_comments : "notes on the person"
+
+    submissions {
+        uuid id PK
+        uuid candidate_id FK
+        uuid job_id FK
+        text stage "submitted salary interviewed offer selected rejected withdrawn"
+        int salary_usd "yearly dollars for this job"
+        text salary_note
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    submission_events {
+        uuid id PK
+        uuid submission_id FK
+        text kind "created stage salary"
+        text from_stage
+        text to_stage
+        text body
+        int salary_usd
+        timestamptz at
+    }
+    submission_comments {
+        uuid id PK
+        uuid submission_id FK
+        text body
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    candidate_comments {
+        uuid id PK
+        uuid candidate_id FK
+        text body
+        timestamptz created_at
+        timestamptz updated_at
+    }

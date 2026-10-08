@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
-import { AlertTriangle, ArrowRight, Briefcase, CheckCircle2, ClipboardCheck, FolderInput, MapPin, RefreshCw, Search, Sparkles, UserPlus, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, Briefcase, CheckCircle2, ClipboardCheck, FolderInput, MapPin, RefreshCw, Route, Search, Sparkles, UserPlus, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { readCache, writeCache } from "@/lib/page-cache";
@@ -16,6 +16,7 @@ type Overview = {
   top_skills: { name: string; count: number }[];
   top_states: { state: string; count: number }[];
   recent_candidates: { id: string; full_name: string | null; location: string | null; title: string | null; created_at: string | null }[];
+  pipeline?: { active: number; selected: number; rejected: number; withdrawn: number };
 };
 
 const CACHE_KEY = "talent-overview";
@@ -68,9 +69,16 @@ export default function DashboardPage() {
 
       {error && <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <Stat icon={Briefcase} label="Open jobs" value={data?.jobs.open} note={data ? `${data.jobs.closed} closed` : ""} href="/admin/jobs" />
         <Stat icon={Users} label="Candidates" value={data?.candidates.total} note={data ? `${data.candidates.ranked} ranked against jobs` : ""} href="/admin/candidates" />
+        <Stat
+          icon={Route}
+          label="In the pipeline"
+          value={data?.pipeline?.active}
+          note={data?.pipeline ? `${data.pipeline.selected} selected · ${data.pipeline.rejected} rejected` : ""}
+          href="/admin/pipeline"
+        />
         <Stat icon={UserPlus} label="Added this week" value={data?.candidates.added_this_week} note="New résumés on file" href="/admin/candidates" />
         <Stat
           icon={AlertTriangle}
@@ -96,7 +104,7 @@ export default function DashboardPage() {
                 <div className="flex min-w-0 items-center gap-3">
                   <Initials name={person.full_name} />
                   <div className="min-w-0">
-                    <Link href={`/admin/match?id=${person.id}`} className="block truncate text-sm font-medium hover:text-pine-deep">
+                    <Link href={`/admin/candidates/${person.id}`} className="block truncate text-sm font-medium hover:text-pine-deep">
                       {person.full_name || "Unnamed résumé"}
                     </Link>
                     <p className="truncate text-xs text-ink/55">{[person.title, person.location].filter(Boolean).join(" · ") || "No title or location yet"}</p>
@@ -135,6 +143,7 @@ export default function DashboardPage() {
               <li>Import résumés from a folder.</li>
               <li>Ask Find for people, in plain words.</li>
               <li>Review several people against one job.</li>
+              <li>Submit the ones you send, and track salary, interviews, and the decision.</li>
             </ol>
             <Button asChild variant="ghost" size="sm" className="mt-2 px-0">
               <Link href="/admin/review">

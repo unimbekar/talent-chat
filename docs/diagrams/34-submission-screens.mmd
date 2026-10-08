@@ -1,0 +1,14 @@
+flowchart LR
+    jobs["Job page<br/>/admin/jobs/CODE"] --> list["Everyone submitted<br/>for this requisition"]
+    list --> detail["Submission<br/>/admin/submissions/id"]
+    people["Candidate profile<br/>/admin/candidates/id"] --> history["Every job this person<br/>was submitted for"]
+    history --> detail
+    board["Pipeline<br/>/admin/pipeline"] --> detail
+    detail --> stage["Change stage"]
+    detail --> pay["Save salary for this job"]
+    detail --> talk["Comment on this submission"]
+    people --> personNote["Comment on the person"]
+    stage --> events["submission_events<br/>append only"]
+    pay --> events
+    detail --> withdraw["Withdraw or reject<br/>row stays"]
+    detail --> mistake["Delete<br/>only a record that should not exist"]
