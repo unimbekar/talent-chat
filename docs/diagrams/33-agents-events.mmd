@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant A1 as Agent 1<br/>Job Discovery
+    participant EV as agent_events<br/>(Postgres)
+    participant A4 as Agent 4<br/>dispatcher
+    participant A2 as Agent 2<br/>Matching
+    participant A3 as Agent 3<br/>Drafting
+    participant OUT as outreach<br/>(Postgres)
+
+    A1->>EV: insert JobCreated
+    A4->>EV: claim next event (SKIP LOCKED)
+    A4->>A2: deliver JobCreated
+    A2->>OUT: upsert match row
+    A2->>EV: insert MatchFound
+    A4->>EV: mark JobCreated done
+    A4->>EV: claim MatchFound
+    A4->>A3: deliver MatchFound
+    A3->>OUT: write draft
+    A3->>EV: insert DraftReady
+    A4->>EV: mark MatchFound done
+    Note over A1,OUT: Every agent also writes a heartbeat to agent_runs on each loop.

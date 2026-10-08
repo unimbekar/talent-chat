@@ -18,6 +18,7 @@ type JobRow = {
   needs_review: boolean;
   last_seen_at: string | null;
   description_note: string | null;
+  source_url: string | null;
   detail_error: string | null;
   must_have_skills: string[];
   nice_to_have_skills: string[];
@@ -164,7 +165,7 @@ export default function JobsPage() {
               <th className="px-3 py-2">Title</th>
               <th className="px-3 py-2">City</th>
               <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2">Description</th>
+              <th className="px-3 py-2">Posting</th>
               <th className="px-3 py-2">Review</th>
               <th className="px-3 py-2">Close</th>
             </tr>
@@ -186,7 +187,15 @@ export default function JobsPage() {
                 <td className="px-3 py-2">{job.title}</td>
                 <td className="px-3 py-2">{job.location}</td>
                 <td className="px-3 py-2">{job.status}</td>
-                <td className="px-3 py-2">{job.description_note || job.description_source}</td>
+                <td className="px-3 py-2">
+                  {job.source_url ? (
+                    <a href={job.source_url} target="_blank" rel="noopener noreferrer" className="whitespace-nowrap text-pine underline">
+                      View on janus-soft.com
+                    </a>
+                  ) : (
+                    <span className="text-ink/50">Not linked</span>
+                  )}
+                </td>
                 <td className="px-3 py-2">{job.needs_review ? <Badge>Needs review</Badge> : ""}</td>
                 <td className="px-3 py-2">
                   {closing === job.requisition_code ? (

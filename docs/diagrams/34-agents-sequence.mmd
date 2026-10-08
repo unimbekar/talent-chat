@@ -1,0 +1,29 @@
+sequenceDiagram
+    autonumber
+    participant Site as janus-soft.com
+    participant A1 as Agent 1 Discovery
+    participant DB as Postgres (events, outreach)
+    participant A4 as Agent 4 Orchestrator
+    participant A2 as Agent 2 Matching
+    participant A3 as Agent 3 Drafting
+    participant R as Recruiter
+    participant SES as Sender (SES / outbox)
+    participant C as Candidate
+
+    A1->>Site: GET /career and each /jobs/NNNN
+    A1->>DB: upsert job + insert JobCreated (one transaction)
+    A4->>DB: claim JobCreated
+    A4->>A2: deliver
+    A2->>DB: score every confirmed, opted-in candidate
+    A2->>DB: upsert outreach(status=matched) + MatchFound, for coverage ≥ 0.80
+    A4->>A3: deliver MatchFound
+    A3->>A3: fill template, optional one-line "why you" from matched lines
+    A4->>A3: QA gate: no clearance, no external_req, link present, unsubscribe present
+    A3->>DB: outreach(status=pending_approval) + DraftReady
+    R->>DB: open /admin/outreach, edit, Approve
+    DB-->>A4: DraftApproved
+    A4->>A4: re-check: job still open, candidate still opted in, rate limit
+    A4->>SES: send with List-Unsubscribe
+    SES-->>C: email
+    SES-->>A4: message id
+    A4->>DB: outreach(status=sent) + EmailSent + audit_log

@@ -1,0 +1,13 @@
+flowchart LR
+    subgraph compose["Docker Compose (Spark) / Graviton instance (AWS)"]
+        web["web<br/>Next.js"]
+        api["api<br/>FastAPI routes only"]
+        worker["agents<br/>same image as api<br/>python -m app.agents"]
+        pg[("postgres")]
+    end
+    llm["LLM client<br/>Ollama on Spark / Bedrock on AWS"]
+    ses["Amazon SES"]
+    web --> api --> pg
+    worker --> pg
+    worker --> llm
+    worker --> ses

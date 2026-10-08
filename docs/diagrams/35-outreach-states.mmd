@@ -1,0 +1,25 @@
+stateDiagram-v2
+    [*] --> matched: Agent 2 (coverage ≥ 80%)
+    matched --> drafting: Agent 3
+    drafting --> qa_failed: lint fails
+    drafting --> pending_approval: lint passes
+    qa_failed --> drafting: retry with template only
+    pending_approval --> approved: recruiter approves
+    pending_approval --> rejected: recruiter rejects
+    pending_approval --> skipped: recruiter skips
+    pending_approval --> expired: job closed, or 14 days old
+    approved --> sending: Agent 4 re-check passes
+    approved --> cancelled: re-check fails (job closed, opted out)
+    sending --> sent: provider accepted
+    sending --> failed: provider error
+    failed --> sending: retry (max 3)
+    failed --> dead: retries used up
+    sent --> bounced: SES bounce
+    sent --> unsubscribed: link clicked
+    rejected --> [*]
+    skipped --> [*]
+    expired --> [*]
+    cancelled --> [*]
+    dead --> [*]
+    bounced --> [*]
+    unsubscribed --> [*]
