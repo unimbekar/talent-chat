@@ -13,7 +13,30 @@ There are two ways to run it. Pick one.
 | Chat model | `qwen3.6` on the Spark | A hosted model (Bedrock, Vertex, or any OpenAI-compatible API) |
 | Good for | Starting now, a pilot, demos | A site customers rely on |
 
-Both options start with the same DNS step.
+Both options start with the same DNS step. Tailscale Funnel, below, is a third way to reach the Spark. It publishes a `*.ts.net` address. It does not serve `talent.janus-soft.com`.
+
+## Tailscale Funnel
+
+Funnel puts the app on the public internet at the Spark’s Tailscale name. On this machine that is `https://spark-42c4.tail55e197.ts.net/chat`. `tailscale funnel status` prints the name if the node is renamed.
+
+`tailscale serve` is different. Serve is visible only to devices on the tailnet, and a foreground `sudo tailscale serve 3010` stops when that terminal closes. Funnel replaces it for a public address and keeps running after the terminal closes.
+
+Stop a foreground `serve` with Ctrl+C, then:
+
+```bash
+sudo tailscale funnel --bg 3010
+tailscale funnel status
+```
+
+The first run opens a Tailscale page to turn Funnel on for the tailnet. Approve it. Turn Funnel off with `sudo tailscale funnel reset`.
+
+The web container is already published on host port 3010. Funnel proxies that port. Leave the command pointed at `3010`, not `3000`. Port 3000 inside the container is not what the host is listening on.
+
+Anyone can open that address, including `/admin`. The app password is still required. Funnel does not add the Google sign-in from [Step 3](#step-3-protect-the-admin-screens-with-cloudflare-access).
+
+Do not point `talent.janus-soft.com` at the `*.ts.net` name with a CNAME. Public DNS does not resolve that Tailscale name, so Windows reports that the site cannot be found. The certificate is also issued for the `*.ts.net` name, so the browser would reject `talent.janus-soft.com` even if the name resolved.
+
+Use [Option A](#step-2-option-a-cloudflare-tunnel-from-the-spark) for `https://talent.janus-soft.com`. Funnel and the Cloudflare Tunnel can run at the same time. Funnel uses host port 3010. The tunnel uses `web:3000` inside Compose.
 
 ## Step 1: Move DNS for janus-soft.com to Cloudflare
 
