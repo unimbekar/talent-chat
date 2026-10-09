@@ -27,9 +27,13 @@ const config: Config = {
       },
       keyframes: {
         "fade-up": { from: { opacity: "0", transform: "translateY(6px)" }, to: { opacity: "1", transform: "none" } },
+        "sheet-up": { from: { transform: "translateY(100%)" }, to: { transform: "none" } },
+        "fade-in": { from: { opacity: "0" }, to: { opacity: "1" } },
       },
       animation: {
         "fade-up": "fade-up 240ms ease-out both",
+        "sheet-up": "sheet-up 260ms cubic-bezier(0.32, 0.72, 0, 1) both",
+        "fade-in": "fade-in 200ms ease-out both",
       },
     },
   },

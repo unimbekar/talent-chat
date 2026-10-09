@@ -186,6 +186,45 @@ export default function SubmissionPage() {
         </div>
       </div>
 
+      {row.application && (
+        <section className="panel p-4">
+          <h2 className="font-serif text-xl">Careers-site application</h2>
+          <p className="page-lead">Sent by the candidate. It does not replace the stage you set here.</p>
+          <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-ink/45">Contact</dt>
+              <dd>
+                {row.application.full_name}
+                <br />
+                {row.application.email} · {row.application.phone}
+                <br />
+                {row.application.location}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-ink/45">Offer they asked for</dt>
+              <dd>
+                {money(row.application.salary_usd)} · start {row.application.start_on} · {row.application.years_experience} years
+              </dd>
+            </div>
+            <div>
+              <dt className="text-ink/45">Clearance attested</dt>
+              <dd>
+                {row.application.fsp ? "TS/SCI with Full Scope Polygraph" : "Did not attest FSP"}
+                {row.application.last_tssci_on ? ` · last TS/SCI ${row.application.last_tssci_on}` : ""}
+                {row.application.last_fsp_on ? ` · last FSP ${row.application.last_fsp_on}` : ""}
+              </dd>
+            </div>
+            {row.application.note && (
+              <div>
+                <dt className="text-ink/45">Note</dt>
+                <dd>{row.application.note}</dd>
+              </div>
+            )}
+          </dl>
+        </section>
+      )}
+
       <section className="panel p-4">
         <h2 className="font-serif text-xl">Stage</h2>
         <p className="page-lead">{byKey[row.stage]?.detail || "Choose the stage this submission is in now."}</p>

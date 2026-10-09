@@ -83,7 +83,7 @@ export default function PipelinePage() {
         </section>
       )}
 
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+      <div className="-mx-4 flex snap-x gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-4 xl:grid-cols-7">
         {(board?.stages || []).map((item) => {
           const selected = stage === item.key;
           return (
@@ -91,7 +91,7 @@ export default function PipelinePage() {
               key={item.key}
               type="button"
               onClick={() => chooseStage(item.key)}
-              className={`rounded-2xl border px-3 py-3 text-left transition ${selected ? "border-pine bg-pine/10 shadow-card" : "border-line bg-card hover:border-pine/40"}`}
+              className={`min-w-[7.5rem] shrink-0 snap-start rounded-2xl border px-3 py-2.5 text-left transition active:scale-95 sm:min-w-0 sm:py-3 ${selected ? "border-pine bg-pine/10 shadow-card" : "border-line bg-card hover:border-pine/40"}`}
             >
               <span className="block text-xs uppercase tracking-wide text-ink/50">{item.label}</span>
               <span className="mt-1 block font-serif text-2xl">{item.count ?? 0}</span>

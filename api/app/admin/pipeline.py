@@ -202,10 +202,31 @@ def _card(row: Submission, comment_count: int | None = None) -> dict:
     }
 
 
+def _application_out(row: Submission) -> dict | None:
+    application = row.application
+    if application is None:
+        return None
+    return {
+        "full_name": application.full_name,
+        "email": application.email,
+        "phone": application.phone,
+        "location": application.location,
+        "salary_usd": application.salary_usd,
+        "start_on": application.start_on.isoformat() if application.start_on else None,
+        "years_experience": application.years_experience,
+        "fsp": application.fsp,
+        "last_fsp_on": application.last_fsp_on.isoformat() if application.last_fsp_on else None,
+        "last_tssci_on": application.last_tssci_on.isoformat() if application.last_tssci_on else None,
+        "note": application.note,
+        "created_at": application.created_at.isoformat() if application.created_at else None,
+    }
+
+
 def _detail(row: Submission) -> dict:
     payload = _card(row)
     payload["events"] = [_event_out(event) for event in row.events]
     payload["comments"] = [_comment_out(comment) for comment in reversed(list(row.comments))]
+    payload["application"] = _application_out(row)
     payload["flow"] = FLOW
     payload["exits"] = EXITS
     return payload

@@ -74,7 +74,7 @@ export default function DashboardPage() {
 
       {error && <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-5 [&>*:last-child]:col-span-2 sm:[&>*:last-child]:col-span-1">
         <Stat icon={Briefcase} label="Open jobs" value={data?.jobs.open} note={data ? `${data.jobs.closed} closed` : ""} href="/admin/jobs" />
         <Stat icon={Users} label="Candidates" value={data?.candidates.total} note={data ? `${data.candidates.ranked} ranked against jobs` : ""} href="/admin/candidates" />
         <Stat
@@ -216,13 +216,13 @@ function Stat({
   warn?: boolean;
 }) {
   return (
-    <Link href={href} className="panel group flex flex-col gap-3 p-5 transition hover:-translate-y-0.5 hover:shadow-lift">
-      <span className={`inline-flex size-10 items-center justify-center rounded-xl ${warn ? "bg-amber-100 text-amber-700" : "bg-pine/10 text-pine-deep"}`}>
+    <Link href={href} className="panel group flex min-w-0 flex-col gap-2 p-4 transition hover:-translate-y-0.5 hover:shadow-lift active:scale-[0.98] sm:gap-3 sm:p-5">
+      <span className={`inline-flex size-9 items-center justify-center rounded-xl sm:size-10 ${warn ? "bg-amber-100 text-amber-700" : "bg-pine/10 text-pine-deep"}`}>
         <Icon className="size-5" />
       </span>
-      <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-ink/50">{label}</p>
-        <p className="mt-1 font-serif text-4xl leading-none">{value ?? "—"}</p>
+      <div className="min-w-0">
+        <p className="truncate text-[11px] font-medium uppercase tracking-wide text-ink/50 sm:text-xs">{label}</p>
+        <p className="mt-1 font-serif text-3xl leading-none sm:text-4xl">{value ?? "—"}</p>
         <p className="mt-2 truncate text-xs text-ink/55">{note || " "}</p>
       </div>
     </Link>

@@ -53,9 +53,25 @@ export type Note = {
   edited: boolean;
 };
 
+export type SiteApplication = {
+  full_name: string;
+  email: string;
+  phone: string;
+  location: string;
+  salary_usd: number;
+  start_on: string | null;
+  years_experience: number;
+  fsp: boolean;
+  last_fsp_on: string | null;
+  last_tssci_on: string | null;
+  note: string | null;
+  created_at: string | null;
+};
+
 export type SubmissionDetail = SubmissionCard & {
   events: SubmissionEvent[];
   comments: Note[];
+  application?: SiteApplication | null;
   flow: string[];
   exits: string[];
 };
@@ -69,6 +85,10 @@ export const STAGE_TONE: Record<string, string> = {
   rejected: "border-red-200 bg-red-50 text-red-800",
   withdrawn: "border-line bg-white text-ink/55",
 };
+
+export function resumeFileUrl(candidateId: string, download = false): string {
+  return `/api/admin/resumes/${candidateId}/file${download ? "?download=1" : ""}`;
+}
 
 export function money(amount: number | null | undefined): string {
   if (amount == null) return "No salary yet";

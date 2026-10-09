@@ -133,6 +133,49 @@ export default function JobsPage() {
     }
   }
 
+  const openJobs = (screen?.jobs || [])
+    .filter((job) => job.status !== "closed")
+    .filter((job) => {
+      const haystack = `${job.requisition_code} ${job.title || ""} ${job.location || ""}`.toLowerCase();
+      return haystack.includes(query.trim().toLowerCase());
+    });
+
+  function closeControl(job: JobRow) {
+    if (closing !== job.requisition_code) {
+      return (
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => {
+            setClosing(job.requisition_code);
+            setNote("");
+          }}
+        >
+          Close
+        </Button>
+      );
+    }
+    return (
+      <div className="flex w-full min-w-56 flex-col gap-2">
+        <Textarea
+          aria-label={`Why close ${job.requisition_code}`}
+          value={note}
+          rows={3}
+          placeholder="Why is this job closing?"
+          onChange={(event) => setNote(event.target.value)}
+        />
+        <div className="flex gap-2">
+          <Button type="button" disabled={closeBusy || !note.trim()} onClick={() => closeJob(job.requisition_code)}>
+            {closeBusy ? "Closing…" : "Confirm close"}
+          </Button>
+          <Button type="button" variant="outline" onClick={() => { setClosing(null); setNote(""); }}>
+            Cancel
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -158,7 +201,35 @@ export default function JobsPage() {
         aria-label="Filter jobs"
         className="field"
       />
-      <div className="overflow-x-auto rounded-lg border border-line bg-card">
+      <ul className="flex flex-col gap-2 lg:hidden">
+        {openJobs.map((job) => (
+          <li key={job.requisition_code} className="panel p-4">
+            <Link href={`/admin/jobs/${job.requisition_code}`} className="block active:opacity-70">
+              <span className="flex items-center gap-2">
+                <span className="font-mono text-sm text-pine">{job.requisition_code}</span>
+                {job.needs_review && <Badge>Needs review</Badge>}
+              </span>
+              <span className="mt-0.5 block font-serif text-lg leading-snug">{job.title}</span>
+              <span className="block text-xs text-ink/60">{job.location}</span>
+            </Link>
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+              <Link href={`/admin/jobs/${job.requisition_code}#submissions`} className="text-pine underline">
+                {job.submission_count || 0} submitted
+              </Link>
+              <Link href={`/admin/jobs/${job.requisition_code}#candidates`} className="text-pine underline">
+                Candidates
+              </Link>
+              {job.source_url && (
+                <a href={job.source_url} target="_blank" rel="noopener noreferrer" className="text-pine underline">
+                  Posting
+                </a>
+              )}
+              <span className={closing === job.requisition_code ? "w-full" : "ml-auto"}>{closeControl(job)}</span>
+            </div>
+          </li>
+        ))}
+      </ul>
+      <div className="hidden overflow-x-auto rounded-lg border border-line bg-card lg:block">
         <table className="w-full min-w-[640px] text-left text-sm">
           <thead className="border-b border-line text-xs uppercase tracking-wide text-ink/60">
             <tr>
@@ -173,13 +244,7 @@ export default function JobsPage() {
             </tr>
           </thead>
           <tbody>
-            {(screen?.jobs || [])
-              .filter((job) => job.status !== "closed")
-              .filter((job) => {
-                const haystack = `${job.requisition_code} ${job.title || ""} ${job.location || ""}`.toLowerCase();
-                return haystack.includes(query.trim().toLowerCase());
-              })
-              .map((job) => (
+            {openJobs.map((job) => (
               <tr key={job.requisition_code} className="border-b border-line last:border-0">
                 <td className="px-3 py-2 font-mono">
                   <Link href={`/admin/jobs/${job.requisition_code}`} className="text-pine underline">
@@ -204,38 +269,7 @@ export default function JobsPage() {
                   )}
                 </td>
                 <td className="px-3 py-2">{job.needs_review ? <Badge>Needs review</Badge> : ""}</td>
-                <td className="px-3 py-2">
-                  {closing === job.requisition_code ? (
-                    <div className="flex min-w-56 flex-col gap-2">
-                      <Textarea
-                        aria-label={`Why close ${job.requisition_code}`}
-                        value={note}
-                        rows={3}
-                        placeholder="Why is this job closing?"
-                        onChange={(event) => setNote(event.target.value)}
-                      />
-                      <div className="flex gap-2">
-                        <Button type="button" disabled={closeBusy || !note.trim()} onClick={() => closeJob(job.requisition_code)}>
-                          {closeBusy ? "Closing…" : "Confirm close"}
-                        </Button>
-                        <Button type="button" variant="outline" onClick={() => { setClosing(null); setNote(""); }}>
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        setClosing(job.requisition_code);
-                        setNote("");
-                      }}
-                    >
-                      Close
-                    </Button>
-                  )}
-                </td>
+                <td className="px-3 py-2">{closeControl(job)}</td>
               </tr>
             ))}
           </tbody>

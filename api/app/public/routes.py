@@ -6,14 +6,18 @@ import logging
 import re
 import threading
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import get_settings
 from app.core.llm import LLMError, parse_json_content
-from app.db import public_session
+from app.db import admin_session, public_session
+from app.models import Job
+from app.careers_apply import limited as apply_limited
+from app.careers_apply import submit_application
 from app.public.refusal import REFUSAL_TEXT, is_refusal
 from app.public.search import drop_unknown_codes, search_jobs
 
@@ -25,9 +29,15 @@ _HITS: dict[str, list[datetime]] = defaultdict(list)
 _LIMIT = 30
 
 
+class HistoryTurn(BaseModel):
+    role: str = Field(pattern="^(user|assistant)$")
+    content: str = Field(max_length=800)
+
+
 class ChatIn(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
     prior_codes: list[str] = Field(default_factory=list)
+    history: list[HistoryTurn] = Field(default_factory=list, max_length=8)
     # False returns the job cards at once and leaves the paragraph to POST /public/explain.
     explain: bool = True
 
@@ -36,6 +46,7 @@ class ExplainIn(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
     prior_codes: list[str] = Field(default_factory=list, max_length=48)
     codes: list[str] = Field(min_length=1, max_length=24)
+    history: list[HistoryTurn] = Field(default_factory=list, max_length=8)
 
 
 def _client_ip(request: Request) -> str:
@@ -60,6 +71,86 @@ def _limited(ip: str) -> bool:
 def reset_rate_limit() -> None:
     with _LOCK:
         _HITS.clear()
+
+
+def _public_blurb(text: str | None) -> str:
+    parts = re.split(r"(?<=[.!?])\s+|\n+", text or "")
+    kept = [
+        part.strip()
+        for part in parts
+        if part.strip() and not re.search(r"(?i)clearance|polygraph|top secret|ts/sci", part)
+    ]
+    return " ".join(kept)[:240]
+
+
+@router.get("/jobs")
+def list_jobs():
+    """Open postings a visitor can read and apply for. No candidate data."""
+    db = public_session()
+    try:
+        rows = db.scalars(select(Job).where(Job.status == "open").order_by(Job.title, Job.requisition_code)).all()
+        return {
+            "jobs": [
+                {
+                    "requisition_code": job.requisition_code,
+                    "title": job.title,
+                    "location": job.location,
+                    "blurb": _public_blurb(job.description_text),
+                }
+                for job in rows
+            ]
+        }
+    except SQLAlchemyError:
+        return JSONResponse({"message": "The job list is unavailable right now.", "jobs": []}, status_code=503)
+    finally:
+        db.close()
+
+
+@router.post("/apply")
+async def apply(
+    request: Request,
+    requisition_code: str = Form(""),
+    full_name: str = Form(""),
+    email: str = Form(""),
+    phone: str = Form(""),
+    location: str = Form(""),
+    salary_usd: int = Form(0),
+    start_on: str = Form(""),
+    years_experience: int = Form(-1),
+    fsp: str = Form(""),
+    last_fsp_on: str = Form(""),
+    last_tssci_on: str = Form(""),
+    note: str = Form(""),
+    file: UploadFile | None = File(default=None),
+):
+    if apply_limited(_client_ip(request)):
+        return JSONResponse(
+            {"message": "Too many applications from this network. Please try again later."},
+            status_code=429,
+        )
+    payload = await file.read() if file is not None else b""
+    db = admin_session()
+    try:
+        return submit_application(
+            db,
+            llm=request.app.state.llm,
+            requisition_code=requisition_code,
+            full_name=full_name,
+            email=email,
+            phone=phone,
+            location=location,
+            salary_usd=salary_usd,
+            start_on=start_on,
+            years_experience=years_experience,
+            fsp=fsp,
+            last_fsp_on=last_fsp_on,
+            last_tssci_on=last_tssci_on,
+            note=note,
+            filename=file.filename if file is not None else "resume.txt",
+            data=payload,
+        )
+    finally:
+        db.close()
 
 
 @router.get("/config")
@@ -125,7 +216,7 @@ def chat(body: ChatIn, request: Request):
             explain_pending = True
         else:
             try:
-                answer = _explain(request, result, body.message)
+                answer = _explain(request, result, body.message, _history_text(body.history))
                 answer = drop_unknown_codes(answer, set(codes))
             except LLMError as exc:
                 logger.warning("public chat explanation failed: %s", exc)
@@ -162,7 +253,7 @@ def explain(body: ExplainIn, request: Request):
         if not result.hits:
             return {"answer": "", "notice": None}
         try:
-            answer = drop_unknown_codes(_explain(request, result, body.message), wanted)
+            answer = drop_unknown_codes(_explain(request, result, body.message, _history_text(body.history)), wanted)
         except LLMError as exc:
             logger.warning("public explanation failed: %s", exc)
             return {"answer": "", "notice": "Explanations are unavailable right now."}
@@ -240,7 +331,15 @@ def _quote_only(result) -> str:
     return "That is not in the posting we have on file."
 
 
-def _explain(request, result, message: str) -> str:
+def _history_text(history: list[HistoryTurn]) -> str:
+    lines = []
+    for turn in history[-6:]:
+        who = "Visitor" if turn.role == "user" else "Assistant"
+        lines.append(f"{who}: {turn.content.strip()[:500]}")
+    return "\n".join(lines)
+
+
+def _explain(request, result, message: str, history: str = "") -> str:
     payload = []
     for hit in result.hits:
         job = hit.job
@@ -270,7 +369,8 @@ def _explain(request, result, message: str) -> str:
         "Do not mention clearance unless the visitor asked about it."
     )
     cities = sorted({hit.job.location for hit in result.hits if hit.job.location})
-    user = f"Question: {message}\nCities in these jobs: {cities}\nRetrieved jobs:\n{payload}"
+    earlier = f"Earlier conversation:\n{history}\n" if history else ""
+    user = f"{earlier}Question: {message}\nCities in these jobs: {cities}\nRetrieved jobs:\n{payload}"
     raw = request.app.state.llm.complete(system=system, user=user, temperature=0.2, json_mode=False)
     text = (raw or "").strip()
     if text.startswith("{"):

@@ -8,6 +8,7 @@ import { CandidateMailBar, selectedEmails, shown } from "@/components/candidate-
 import { IngestProgress, IngestProgressView } from "@/components/ingest-progress";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { resumeFileUrl } from "@/lib/pipeline";
 
 type CandidateRow = {
   id: string;
@@ -15,6 +16,7 @@ type CandidateRow = {
   email: string | null;
   location: string | null;
   original_filename: string | null;
+  has_file: boolean;
   status: string;
   titles: string[];
   skills: string[];
@@ -350,10 +352,15 @@ export default function CandidatesPage() {
                     </p>
                     <p className="text-xs text-ink/80">Email: {shown(candidate.email)}</p>
                     <p className="text-xs text-ink/80">Location: {shown(candidate.location)}</p>
-                    <p className="mt-1 text-xs">
+                    <p className="mt-1 flex gap-3 text-xs">
                       <Link href={`/admin/match?id=${candidate.id}`} className="text-pine hover:underline">
                         Rank against jobs
                       </Link>
+                      {candidate.has_file && (
+                        <a href={resumeFileUrl(candidate.id, true)} className="text-pine hover:underline">
+                          Download résumé
+                        </a>
+                      )}
                     </p>
                     {candidate.skills.length > 0 && (
                       <p className="mt-1 truncate text-xs text-ink/50">{candidate.skills.join(" · ")}</p>

@@ -72,7 +72,7 @@ Ingest is the third screen a recruiter lives on. Three sources, one rule: the ne
 
 ## Public chat
 
-Open `/chat`. Visitors ask in their own words about open jobs: a skill, a city, or a requisition code. The answer and the job cards come from the postings on file. A question such as “Which jobs require Spring Boot?” is matched against each posting’s requirement lines. A line that says the tool is excluded does not count. Related wording counts and is shown on the card, so a posting that requires Spring Framework is listed, with that sentence visible. Closed postings that name the tool are listed separately and marked closed. The assistant does not search candidates, emails, or phone numbers.
+Open `/chat`. The page lists every open job. Ask the Desk, on the side, answers questions about those postings: a skill, a city, or a requisition code. Follow-up questions keep the earlier turns. The answer and the job cards come from the postings on file. A question such as “Which jobs require Spring Boot?” is matched against each posting’s requirement lines. A line that says the tool is excluded does not count. Related wording counts and is shown on the card, so a posting that requires Spring Framework is listed, with that sentence visible. Closed postings that name the tool are listed separately and marked closed. The assistant does not search candidates, emails, or phone numbers.
 
 ## Recruiter desk
 
@@ -98,7 +98,9 @@ A job page lists everyone submitted for that requisition. A candidate profile li
 
 ![Where a submission is edited](docs/diagrams/34-submission-screens.png)
 
-The public chat cannot read submissions, comments, or salary. Those tables are granted only to the recruiter database role.
+A visitor applies from a job card. The form asks for a résumé, desired salary, a start date, years of experience, and whether they hold TS/SCI with a Full Scope Polygraph. That last answer is required. Without FSP the application is refused and nothing is stored. With FSP, the résumé is saved and the pipeline shows the person as Submitted for that job. The visitor cannot open the recruiter desk, change a stage, or read anyone else’s résumé.
+
+The public chat cannot read submissions, comments, or salary. Those tables are granted only to the recruiter database role. The apply route writes through the server, not through the public database role.
 
 ## Reports
 
@@ -144,6 +146,19 @@ LLM_BASE_URL=http://127.0.0.1:11434/v1 \
 ```
 
 Set those variables on the command only. Do not export them: the test suite refuses to run unless every database URL names a `*_test` database, and that guard is the only thing between pytest and the live data.
+
+## Phone app
+
+The recruiter desk installs as an app on Android and iPhone from its HTTPS address (for example the Tailscale Funnel or Cloudflare URL). There is nothing to publish to an app store, and every change to the site reaches the phone on its next open.
+
+- **Android (Chrome):** open the address, sign in, then tap **More**, then **Install the desk app**, or use Chrome's menu, then **Install app**.
+- **iPhone (Safari):** tap **Share**, then **Add to Home Screen**.
+
+On a phone the desk shows a tab bar (Dashboard, Jobs, Candidates, Pipeline, More), the assistant opens full screen and closes with Back, and a candidate profile has Call, Text, and Email buttons. Long-press the app icon for shortcuts to Ask the desk, Pipeline, Candidates, and Jobs. On Android, sharing text from another app (a LinkedIn post, an email) to the desk offers **Find matching candidates** or **Ask the desk about it**.
+
+Only the app's own files are cached on the device. Candidate data, résumés, and assistant answers always come from the server, and when the phone is offline the desk shows an offline screen instead. When a new version is deployed, an **Update** button appears.
+
+The icons in `web/public/icons` are drawn from `web/public/brand/logo.svg`. After changing the logo, run `node scripts/make-icons.mjs` in `web` and rebuild. Installation needs HTTPS (or `localhost`); a plain `http://192.168.x.x` address can be bookmarked but not installed.
 
 ## Ingest résumés
 

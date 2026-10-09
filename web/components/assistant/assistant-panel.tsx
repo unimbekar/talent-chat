@@ -123,8 +123,34 @@ export function AssistantPanel({ mode, onMode }: { mode: PanelMode; onMode: (mod
   }, [open, model]);
 
   useEffect(() => {
-    if (open) setTimeout(() => inputRef.current?.focus(), 50);
+    // On a phone the keyboard would cover the suggestions, so only desktop focuses the box.
+    if (open && window.matchMedia("(pointer: fine)").matches) setTimeout(() => inputRef.current?.focus(), 50);
   }, [open]);
+
+  const onModeRef = useRef(onMode);
+  onModeRef.current = onMode;
+
+  // Full screen on phones: Back closes the panel and the page underneath stays still.
+  useEffect(() => {
+    if (!open || !window.matchMedia("(max-width: 1023px)").matches) return;
+    window.history.pushState({ ...window.history.state, deskAssistant: true }, "");
+    const onPop = () => onModeRef.current("closed");
+    window.addEventListener("popstate", onPop);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      document.body.style.overflow = overflow;
+      if (window.history.state?.deskAssistant) window.history.back();
+    };
+  }, [open]);
+
+  const lastPath = useRef(pathname);
+  useEffect(() => {
+    if (lastPath.current === pathname) return;
+    lastPath.current = pathname;
+    if (open && window.matchMedia("(max-width: 1023px)").matches) onModeRef.current("closed");
+  }, [pathname, open]);
 
   useEffect(() => {
     const node = scrollRef.current;
@@ -213,9 +239,8 @@ export function AssistantPanel({ mode, onMode }: { mode: PanelMode; onMode: (mod
   useEffect(() => {
     const onAsk = (event: Event) => {
       const question = (event as CustomEvent<{ question: string }>).detail?.question;
-      if (!question) return;
       onMode(mode === "closed" ? "open" : mode);
-      void send(question);
+      if (question) void send(question);
     };
     window.addEventListener(ASK_EVENT, onAsk);
     return () => window.removeEventListener(ASK_EVENT, onAsk);
@@ -269,11 +294,12 @@ export function AssistantPanel({ mode, onMode }: { mode: PanelMode; onMode: (mod
       <button
         type="button"
         onClick={() => onMode("open")}
-        className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full bg-night py-3 pl-4 pr-5 text-sm font-medium text-white shadow-lift ring-1 ring-white/10 transition hover:-translate-y-0.5 hover:bg-black"
+        className="fixed bottom-[calc(env(safe-area-inset-bottom)+5rem)] right-4 z-40 inline-flex items-center gap-2 rounded-full bg-night py-3.5 pl-4 pr-5 text-sm font-medium text-white shadow-lift ring-1 ring-white/10 transition hover:-translate-y-0.5 hover:bg-black active:scale-95 lg:bottom-5 lg:right-5 lg:py-3"
         title="Ask the assistant (Ctrl+J)"
       >
         <Sparkles className="size-4 text-pine-soft" />
-        Ask the desk
+        <span className="lg:hidden">Ask</span>
+        <span className="hidden lg:inline">Ask the desk</span>
         <kbd className="ml-1 hidden rounded bg-white/10 px-1.5 py-0.5 font-sans text-[10px] text-white/60 sm:inline">Ctrl J</kbd>
       </button>
     );
@@ -284,12 +310,12 @@ export function AssistantPanel({ mode, onMode }: { mode: PanelMode; onMode: (mod
 
   return (
     <aside
-      className={`fixed inset-y-0 right-0 z-40 flex w-full flex-col border-l border-line bg-desk shadow-lift sm:w-[440px] ${
+      className={`fixed inset-y-0 right-0 z-50 flex h-[100dvh] w-full animate-fade-in flex-col border-l border-line bg-desk shadow-lift sm:w-[440px] lg:z-40 ${
         mode === "wide" ? "xl:w-[720px]" : ""
       }`}
       aria-label="Desk assistant"
     >
-      <header className="flex items-center gap-2 border-b border-black/20 bg-night px-4 py-3 text-white">
+      <header className="flex items-center gap-2 border-b border-black/20 bg-night px-4 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] text-white">
         <Sparkles className="size-4 text-pine-soft" />
         <div className="min-w-0 flex-1 leading-tight">
           <p className="text-sm font-medium">Desk assistant</p>
@@ -397,7 +423,7 @@ export function AssistantPanel({ mode, onMode }: { mode: PanelMode; onMode: (mod
         )}
       </div>
 
-      <form onSubmit={submit} className="border-t border-line bg-white px-3 py-3">
+      <form onSubmit={submit} className="border-t border-line bg-white px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3">
         <div className="flex items-end gap-2 rounded-xl border border-line bg-white px-3 py-2 shadow-sm focus-within:border-pine/60 focus-within:ring-4 focus-within:ring-pine/15">
           <textarea
             ref={inputRef}
@@ -406,6 +432,7 @@ export function AssistantPanel({ mode, onMode }: { mode: PanelMode; onMode: (mod
             onKeyDown={onKeyDown}
             rows={1}
             maxLength={2000}
+            enterKeyHint="send"
             placeholder={context.code ? `Ask about ${context.code}…` : "Ask about jobs, candidates, or the pipeline…"}
             className="max-h-40 min-h-[24px] flex-1 resize-none bg-transparent text-sm text-ink outline-none placeholder:text-ink/40"
             style={{ height: "auto" }}
@@ -425,7 +452,10 @@ export function AssistantPanel({ mode, onMode }: { mode: PanelMode; onMode: (mod
             </button>
           )}
         </div>
-        <p className="mt-1.5 px-1 text-[10px] text-ink/40">Reads your desk data only. It cannot change records. Enter to send, Shift+Enter for a new line.</p>
+        <p className="mt-1.5 px-1 text-[10px] text-ink/40">
+          Reads your desk data only. It cannot change records.
+          <span className="hidden lg:inline"> Enter to send, Shift+Enter for a new line.</span>
+        </p>
       </form>
     </aside>
   );

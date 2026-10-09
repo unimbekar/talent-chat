@@ -327,6 +327,7 @@ def job_candidates(code: str, session: Session = Depends(require_admin)):
                 "id": str(candidate.id),
                 "full_name": display_name or candidate.full_name,
                 "original_filename": candidate.original_filename,
+                "has_file": bool(candidate.original_path),
                 "email": candidate.email,
                 "location": candidate.location,
                 "mandatory_pct": mandatory_pct,
@@ -846,6 +847,7 @@ def list_resumes(
                 "email": row.email,
                 "location": row.location,
                 "original_filename": row.original_filename,
+                "has_file": bool(row.original_path),
                 "status": row.status,
                 "titles": list(row.titles or []),
                 "skills": [
@@ -936,19 +938,19 @@ _RESUME_TYPES = {
 
 
 @router.get("/resumes/{candidate_id}/file")
-def get_resume_file(candidate_id: uuid.UUID, session: Session = Depends(require_admin)):
+def get_resume_file(candidate_id: uuid.UUID, download: bool = False, session: Session = Depends(require_admin)):
     candidate = get_candidate(session, candidate_id)
     if candidate is None:
         raise HTTPException(status_code=404, detail="Candidate not found.")
     data = read_stored(candidate.original_path)
     if data is None:
         raise HTTPException(status_code=404, detail="The original résumé file is not on file.")
-    _audit(session, "resume_file", subject_id=candidate.id, outcome="ok")
+    _audit(session, "resume_download" if download else "resume_file", subject_id=candidate.id, outcome="ok")
     session.commit()
     name = Path(candidate.original_filename or "resume.pdf").name
     media = _RESUME_TYPES.get(Path(name).suffix.lower(), "application/octet-stream")
-    # PDFs and text open in the browser tab; Word files download.
-    disposition = "inline" if media.startswith(("application/pdf", "text/")) else "attachment"
+    # PDFs and text open in the browser tab unless a download is asked for; Word files always download.
+    disposition = "inline" if not download and media.startswith(("application/pdf", "text/")) else "attachment"
     ascii_name = name.encode("ascii", "ignore").decode() or "resume"
     return Response(
         content=data,
@@ -1165,6 +1167,8 @@ def _candidate_out(candidate) -> dict:
         "polygraph": candidate.polygraph,
         "citizenship": candidate.citizenship,
         "summary": candidate.summary,
+        "original_filename": candidate.original_filename,
+        "has_file": bool(candidate.original_path),
     }
 
 

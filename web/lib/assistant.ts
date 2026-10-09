@@ -235,6 +235,10 @@ export function askAssistant(question: string) {
   window.dispatchEvent(new CustomEvent(ASK_EVENT, { detail: { question } }));
 }
 
+export function openAssistant() {
+  window.dispatchEvent(new CustomEvent(ASK_EVENT, { detail: { question: "" } }));
+}
+
 export function money(value: number | null | undefined): string {
   return value == null ? "" : `$${value.toLocaleString("en-US")}`;
 }

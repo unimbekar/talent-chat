@@ -261,6 +261,12 @@ def test_original_resume_file_and_candidate_pipeline_filter(db, tmp_path):
         assert opened.headers["content-disposition"].startswith("inline;")
         assert "filename*=UTF-8''Alex%20Rivera%20r%C3%A9sum%C3%A9.pdf" in opened.headers["content-disposition"]
         assert client.get(f"/admin/resumes/{sam.id}/file").status_code == 404
+        saved = client.get(f"/admin/resumes/{alex.id}/file?download=1")
+        assert saved.status_code == 200
+        assert saved.headers["content-disposition"].startswith("attachment;")
+        assert client.get(f"/admin/resumes/{alex.id}").json()["candidate"]["has_file"] is True
+        listed = {row["id"]: row["has_file"] for row in client.get("/admin/resumes").json()["candidates"]}
+        assert listed[str(alex.id)] is True
 
         assert client.post("/admin/submissions", json={"candidate_id": str(alex.id), "requisition_code": "A1001"}).status_code == 200
         board = client.get(f"/admin/pipeline?scope=all&candidate_id={alex.id}").json()

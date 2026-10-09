@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { Download, Mail, MessageSquare, Phone } from "lucide-react";
 
 import { BackButton } from "@/components/back-button";
 import { CommentThread } from "@/components/comment-thread";
 import { SubmissionForm } from "@/components/submission-form";
 import { StageBadge } from "@/components/stage-badge";
 import { Button } from "@/components/ui/button";
-import { errorMessage, money, personName, when, type Note, type SubmissionCard } from "@/lib/pipeline";
+import { errorMessage, money, personName, resumeFileUrl, when, type Note, type SubmissionCard } from "@/lib/pipeline";
 
 type Profile = {
   id: string;
@@ -21,6 +22,8 @@ type Profile = {
   titles: string[];
   summary: string | null;
   clearance: string | null;
+  original_filename: string | null;
+  has_file: boolean;
 };
 
 export default function CandidateProfilePage() {
@@ -95,8 +98,34 @@ export default function CandidateProfilePage() {
           <p className="page-lead">
             {[profile.email, profile.phone, profile.location, profile.titles.join(", ")].filter(Boolean).join(" · ") || "No contact details on file yet."}
           </p>
+          {(profile.phone || profile.email) && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {profile.phone && (
+                <>
+                  <a href={`tel:${dialable(profile.phone)}`} className="inline-flex items-center gap-1.5 rounded-full bg-night px-4 py-2 text-sm font-medium text-white active:scale-95">
+                    <Phone className="size-4 text-pine-soft" /> Call
+                  </a>
+                  <a href={`sms:${dialable(profile.phone)}`} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-4 py-2 text-sm font-medium active:scale-95">
+                    <MessageSquare className="size-4 text-pine" /> Text
+                  </a>
+                </>
+              )}
+              {profile.email && (
+                <a href={`mailto:${profile.email}`} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-4 py-2 text-sm font-medium active:scale-95">
+                  <Mail className="size-4 text-pine" /> Email
+                </a>
+              )}
+            </div>
+          )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {profile.has_file && (
+            <Button asChild variant="outline">
+              <a href={resumeFileUrl(profile.id, true)} title={profile.original_filename || undefined}>
+                <Download /> Download résumé
+              </a>
+            </Button>
+          )}
           <Button asChild variant="outline">
             <Link href={`/admin/match?id=${profile.id}`}>Rank against jobs</Link>
           </Button>
@@ -173,4 +202,9 @@ export default function CandidateProfilePage() {
       />
     </div>
   );
+}
+
+function dialable(phone: string): string {
+  const digits = phone.replace(/[^\d+]/g, "");
+  return digits.length === 10 ? `+1${digits}` : digits;
 }

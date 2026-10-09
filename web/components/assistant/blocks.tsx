@@ -9,6 +9,7 @@ import { StageBadge } from "@/components/stage-badge";
 import { downloadCsv } from "@/lib/csv";
 import type { Block, CandidateRow, JobRow, RankedRow, SubmissionRow } from "@/lib/assistant";
 import { money } from "@/lib/assistant";
+import { resumeFileUrl } from "@/lib/pipeline";
 
 const PREVIEW = 6;
 
@@ -363,9 +364,16 @@ function ProfileBlock({ block }: { block: Extract<Block, { type: "profile" }> })
     <Shell
       title={c.name || "Candidate"}
       actions={
-        <Link href={`/admin/candidates/${c.id}`} className="text-[11px] font-medium text-pine hover:underline">
-          Open
-        </Link>
+        <span className="flex gap-3">
+          {c.has_file && (
+            <a href={resumeFileUrl(c.id, true)} className="text-[11px] font-medium text-pine hover:underline">
+              Résumé
+            </a>
+          )}
+          <Link href={`/admin/candidates/${c.id}`} className="text-[11px] font-medium text-pine hover:underline">
+            Open
+          </Link>
+        </span>
       }
     >
       <dl className="space-y-1 px-3 py-2.5">

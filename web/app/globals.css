@@ -16,6 +16,36 @@ body {
 
 body {
   overflow-x: hidden;
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* iOS zooms into any field under 16px; keep phones at 16px. */
+@media (max-width: 1023px) and (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+@media (display-mode: standalone) {
+  body {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  input,
+  textarea,
+  [contenteditable],
+  p,
+  li,
+  td,
+  dd,
+  pre,
+  code {
+    user-select: text;
+    -webkit-user-select: text;
+  }
 }
 
 ::selection {

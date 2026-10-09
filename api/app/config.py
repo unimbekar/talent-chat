@@ -34,8 +34,8 @@ class Settings(BaseSettings):
     # Branding for a customer deployment. The web app reads these from GET /public/config.
     brand_tagline: str = "Find the role that fits you"
     brand_accent: str = "#857251"
-    brand_logo_url: str = "/brand/logo.svg"
-    brand_hero_url: str = "/brand/hero.webp"
+    brand_logo_url: str = "/brand/mark.jpg"
+    brand_hero_url: str = "/brand/hero.jpg"
     brand_footer: str = (
         "This tool is not authorized for classified processing and is not a FedRAMP system; "
         "do not upload classified documents or CUI."

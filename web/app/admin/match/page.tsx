@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { BackButton } from "@/components/back-button";
 import { Badge } from "@/components/ui/badge";
 import { readCache, writeCache } from "@/lib/page-cache";
+import { resumeFileUrl } from "@/lib/pipeline";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,7 @@ type Profile = {
   polygraph: string | null;
   citizenship: string | null;
   summary: string | null;
+  has_file?: boolean;
 };
 type MatchRow = {
   requisition_code: string;
@@ -365,6 +367,11 @@ function MatchPage() {
               <Button type="button" onClick={confirm} disabled={ranking || uploading}>
                 {ranking ? "Ranking…" : "Confirm and rank"}
               </Button>
+              {profile.has_file && (
+                <Button asChild variant="outline">
+                  <a href={resumeFileUrl(profile.id, true)}>Download résumé</a>
+                </Button>
+              )}
               <Button type="button" variant="outline" onClick={remove} disabled={ranking || uploading}>
                 Delete
               </Button>
@@ -529,7 +536,7 @@ function MatchCard({
               <Link href={`/admin/review?job=${row.requisition_code}&candidate=${candidateId}`} className="text-pine hover:underline">
                 Review
               </Link>
-              <a href={`/api/admin/resumes/${candidateId}/file`} target="_blank" rel="noopener noreferrer" className="text-pine hover:underline">
+              <a href={resumeFileUrl(candidateId)} target="_blank" rel="noopener noreferrer" className="text-pine hover:underline">
                 Open résumé
               </a>
             </div>

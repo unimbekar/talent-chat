@@ -7,6 +7,7 @@ import { BarChart3, Briefcase, ClipboardCheck, FolderInput, LayoutDashboard, Log
 
 import { AssistantPanel, type PanelMode } from "@/components/assistant/assistant-panel";
 import { BrandMark, useBrand } from "@/components/brand";
+import { InstallButton, isActive, MobileTabs } from "@/components/mobile-nav";
 import { QuickSearch } from "@/components/quick-search";
 
 const PANEL_KEY = "talent-assistant-mode";
@@ -50,20 +51,26 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   // On wide screens the page makes room for the open assistant instead of sitting under it.
   const room = panel === "wide" ? "xl:pr-[720px]" : panel === "open" ? "xl:pr-[440px]" : "";
 
+  const current = NAV.find((item) => isActive(pathname, item.href));
+
   return (
     <div className={`flex min-h-screen flex-col transition-[padding] ${room}`}>
-      <header className="sticky top-0 z-30 border-b border-black/20 bg-night text-white shadow-lift">
-        <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5">
-          <Link href="/admin/dashboard" className="flex items-center gap-2.5">
-            <BrandMark className="size-8" />
-            <span className="leading-tight">
-              <span className="block font-serif text-base">{brand.company_name}</span>
+      <header className="sticky top-0 z-30 border-b border-black/20 bg-night pt-[env(safe-area-inset-top)] text-white shadow-lift">
+        <div className="mx-auto flex w-full max-w-7xl items-center gap-x-6 gap-y-2 px-4 py-2.5 lg:flex-wrap">
+          <Link href="/admin/dashboard" className="flex min-w-0 items-center gap-2.5">
+            <BrandMark className="size-8 shrink-0" />
+            <span className="min-w-0 leading-tight">
+              <span className="block truncate font-serif text-base">
+                <span className="lg:hidden">{current?.label || brand.company_name}</span>
+                <span className="hidden lg:inline">{brand.company_name}</span>
+              </span>
               <span className="block text-[10px] uppercase tracking-[0.22em] text-pine-soft">Recruiter desk</span>
             </span>
           </Link>
-          <nav className="-mx-1 flex flex-1 flex-wrap items-center gap-1 text-sm">
+          <span className="flex-1 lg:hidden" />
+          <nav className="-mx-1 hidden flex-1 flex-wrap items-center gap-1 text-sm lg:flex">
             {NAV.map(({ href, label, icon: Icon }) => {
-              const active = pathname === href || pathname.startsWith(`${href}/`);
+              const active = isActive(pathname, href);
               return (
                 <Link
                   key={href}
@@ -79,21 +86,25 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             })}
           </nav>
           <QuickSearch />
-          <button
-            type="button"
-            onClick={logout}
-            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-white/60 transition hover:bg-white/5 hover:text-white"
-          >
-            <LogOut className="size-4" /> Log out
-          </button>
+          <span className="hidden lg:contents">
+            <InstallButton />
+            <button
+              type="button"
+              onClick={logout}
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-white/60 transition hover:bg-white/5 hover:text-white"
+            >
+              <LogOut className="size-4" /> Log out
+            </button>
+          </span>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8">{children}</main>
+      <main className="mx-auto w-full max-w-7xl flex-1 px-4 pb-32 pt-5 sm:pt-8 lg:pb-8">{children}</main>
       {brand.footer && (
-        <footer className="border-t border-line">
+        <footer className="border-t border-line pb-[calc(env(safe-area-inset-bottom)+4rem)] lg:pb-0">
           <p className="mx-auto w-full max-w-7xl px-4 py-4 text-xs leading-5 text-ink/55">{brand.footer}</p>
         </footer>
       )}
+      <MobileTabs pathname={pathname} primary={NAV.slice(0, 4)} more={NAV.slice(4)} onLogout={logout} />
       <AssistantPanel mode={panel} onMode={changePanel} />
     </div>
   );

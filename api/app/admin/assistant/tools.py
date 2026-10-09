@@ -395,7 +395,7 @@ def candidate_profile(ctx: ToolContext, args: dict) -> ToolResult:
     return ToolResult(
         data=data,
         summary=f"Profile of {data['name'] or 'candidate'}",
-        block={"type": "profile", "candidate": data},
+        block={"type": "profile", "candidate": {**data, "has_file": bool(candidate.original_path)}},
         codes={item["code"] for item in data["best_matching_jobs"] if item["code"]}
         | {item["code"] for item in data["submissions"]},
     )

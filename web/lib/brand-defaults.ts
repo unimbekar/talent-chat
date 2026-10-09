@@ -14,8 +14,8 @@ export const DEFAULT_BRAND: Brand = {
   careers_url: "https://www.janus-soft.com/career",
   tagline: "Find the role that fits you",
   accent: "#857251",
-  logo_url: "/brand/logo.svg",
-  hero_url: "/brand/hero.webp",
+  logo_url: "/brand/mark.jpg",
+  hero_url: "/brand/hero.jpg",
   footer: "",
   examples: ["Which jobs require Spring Boot?", "Java and AWS jobs", "Jobs in Chantilly", "Do any roles need a clearance?"],
 };

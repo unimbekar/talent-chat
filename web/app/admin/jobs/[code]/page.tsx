@@ -13,6 +13,7 @@ import { Download } from "lucide-react";
 
 import { downloadCsv, percent } from "@/lib/csv";
 import { readCache, writeCache } from "@/lib/page-cache";
+import { resumeFileUrl } from "@/lib/pipeline";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -20,6 +21,7 @@ type JobCandidate = {
   id: string;
   full_name: string | null;
   original_filename: string | null;
+  has_file?: boolean;
   email: string | null;
   location: string | null;
   mandatory_pct: number | null;
@@ -406,6 +408,11 @@ export default function JobDetailPage() {
                   <Link href={`/admin/match?id=${candidate.id}`} className="text-pine hover:underline">
                     Open résumé
                   </Link>
+                  {candidate.has_file && (
+                    <a href={resumeFileUrl(candidate.id, true)} className="text-pine hover:underline">
+                      Download
+                    </a>
+                  )}
                 </div>
               </div>
               <div className="mt-2 grid grid-cols-2 items-stretch gap-2">

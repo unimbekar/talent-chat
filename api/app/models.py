@@ -1,10 +1,10 @@
 """Phase 1 tables. outreach and ingest_events arrive in later phases."""
 
-from datetime import datetime
+from datetime import date, datetime
 import uuid
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Boolean, Computed, DateTime, Float, ForeignKey, Integer, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, Computed, Date, DateTime, Float, ForeignKey, Integer, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, validates
 
@@ -166,6 +166,9 @@ class Submission(Base):
     comments: Mapped[list["SubmissionComment"]] = relationship(
         back_populates="submission", cascade="all, delete-orphan", order_by="SubmissionComment.created_at"
     )
+    application: Mapped["JobApplication | None"] = relationship(
+        back_populates="submission", cascade="all, delete-orphan", uselist=False
+    )
 
 
 class SubmissionEvent(Base):
@@ -199,6 +202,32 @@ class SubmissionComment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     submission: Mapped[Submission] = relationship(back_populates="comments")
+
+
+class JobApplication(Base):
+    """What a visitor sent from the careers site. Recruiters read it on the submission."""
+
+    __tablename__ = "job_applications"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    submission_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("submissions.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    candidate_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("candidates.id", ondelete="CASCADE"), index=True)
+    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    full_name: Mapped[str] = mapped_column(Text)
+    email: Mapped[str] = mapped_column(Text)
+    phone: Mapped[str] = mapped_column(Text)
+    location: Mapped[str] = mapped_column(Text)
+    salary_usd: Mapped[int] = mapped_column(Integer)
+    start_on: Mapped[date] = mapped_column(Date)
+    years_experience: Mapped[int] = mapped_column(Integer)
+    fsp: Mapped[bool] = mapped_column(Boolean)
+    last_fsp_on: Mapped[date | None] = mapped_column(Date)
+    last_tssci_on: Mapped[date | None] = mapped_column(Date)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    submission: Mapped[Submission] = relationship(back_populates="application")
 
 
 class CandidateComment(Base):
