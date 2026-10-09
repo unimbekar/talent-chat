@@ -1,6 +1,6 @@
 # Talent Chat as a product
 
-How to package Talent Chat for other staffing firms and government contractors, what it already does, what must be added before charging for it, and a starting price list.
+How to package Talent Chat for other staffing firms and government contractors, what it already does, what must be added before charging for it, and a starting price list. Market, pricing, and sales plan: [GO_TO_MARKET.md](GO_TO_MARKET.md).
 
 ## What a customer gets
 
