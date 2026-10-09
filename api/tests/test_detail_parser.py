@@ -28,6 +28,11 @@ def test_every_detail_fixture():
             assert parsed.clearance_required == "ts_sci", path.name
         if "full scope" in html.lower() or "fsp" in html.lower():
             assert parsed.polygraph_required == "full_scope", path.name
+        assert parsed.description_text in parsed.posting_text or parsed.needs_review, path.name
+        for quote in parsed.must_have_quotes + parsed.nice_to_have_quotes:
+            assert quote in parsed.posting_text, (path.name, quote)
+        if parsed.clearance_quote:
+            assert parsed.clearance_quote in parsed.posting_text, path.name
 
 
 def test_job_1001_listing_title_wins_over_stale_heading():

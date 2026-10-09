@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
-import { ArrowUp, Briefcase, MapPin, Sparkles, X } from "lucide-react";
+import { ArrowUp, Briefcase, FileText, MapPin, Sparkles, X } from "lucide-react";
 
 import { BrandMark, useBrand } from "@/components/brand";
 import { Button } from "@/components/ui/button";
@@ -33,12 +33,14 @@ export function AskDesk({
   open,
   onClose,
   onApply,
+  onView,
   question,
   questionId,
 }: {
   open: boolean;
   onClose: () => void;
   onApply: (code: string) => void;
+  onView: (code: string) => void;
   question?: string;
   questionId?: number;
 }) {
@@ -167,7 +169,7 @@ export function AskDesk({
             <p className="max-w-[90%] self-end rounded-2xl rounded-br-md bg-night px-3 py-2 text-sm leading-6 text-white">{turn.question}</p>
             <div className="flex gap-2">
               <BrandMark className="mt-0.5 size-7" />
-              <Answer response={turn.response} onApply={onApply} />
+              <Answer response={turn.response} onApply={onApply} onView={onView} />
             </div>
           </div>
         ))}
@@ -203,7 +205,15 @@ export function AskDesk({
   );
 }
 
-function Answer({ response, onApply }: { response: ChatResponse; onApply: (code: string) => void }) {
+function Answer({
+  response,
+  onApply,
+  onView,
+}: {
+  response: ChatResponse;
+  onApply: (code: string) => void;
+  onView: (code: string) => void;
+}) {
   if (response.limited || response.refusal || response.error) {
     return <p className="text-sm leading-6 text-ink/80">{response.message || response.answer}</p>;
   }
@@ -216,7 +226,13 @@ function Answer({ response, onApply }: { response: ChatResponse; onApply: (code:
       {response.explain_pending && !response.answer && <p className="text-sm text-ink/45">Writing a short answer…</p>}
       {jobs.map((job) => (
         <article key={job.requisition_code} className="rounded-xl border border-line bg-white px-3 py-3">
-          <p className="font-medium">{job.title || "Untitled role"}</p>
+          <button
+            type="button"
+            onClick={() => onView(job.requisition_code)}
+            className="text-left font-medium underline-offset-2 hover:text-pine-deep hover:underline"
+          >
+            {job.title || "Untitled role"}
+          </button>
           <p className="mt-1 flex flex-wrap gap-2 text-xs text-ink/50">
             <span className="font-mono">{job.requisition_code}</span>
             {job.location && (
@@ -225,10 +241,15 @@ function Answer({ response, onApply }: { response: ChatResponse; onApply: (code:
               </span>
             )}
           </p>
-          {job.quote && <p className="mt-2 text-xs leading-5 text-ink/60">{job.quote}</p>}
-          <button type="button" onClick={() => onApply(job.requisition_code)} className="mt-2 text-sm text-pine-deep underline-offset-2 hover:underline">
-            Apply
-          </button>
+          {job.quote && <p className="mt-2 line-clamp-4 text-xs leading-5 text-ink/60">{job.quote}</p>}
+          <div className="mt-2 flex items-center gap-4 text-sm">
+            <button type="button" onClick={() => onView(job.requisition_code)} className="inline-flex items-center gap-1 text-ink/70 underline-offset-2 hover:text-pine-deep hover:underline">
+              <FileText className="size-3.5" /> Full description
+            </button>
+            <button type="button" onClick={() => onApply(job.requisition_code)} className="text-pine-deep underline-offset-2 hover:underline">
+              Apply
+            </button>
+          </div>
         </article>
       ))}
       {closed.length > 0 && (

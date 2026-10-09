@@ -128,6 +128,8 @@ class DetailParse:
     polygraph_required: str | None = None
     needs_review: bool = False
     clearance_quote: str | None = None
+    # The whole posting in page order, headings and skill lines included, for visitors to read.
+    posting_text: str = ""
 
 
 def _prefer(current: str | None, new: str | None, rank: dict[str, int]) -> str | None:
@@ -154,12 +156,14 @@ def parse_detail_html(html: str) -> DetailParse:
     recognized = False
     section = "preamble"
     description_parts: list[str] = []
+    posting: list[str] = []
 
     for block in blocks:
         kind = _heading_kind(block)
         if kind:
             section = kind
             recognized = True
+            posting.append(block)
             continue
         glued = _GLUED_DESCRIPTION.match(block)
         if glued:
@@ -168,12 +172,16 @@ def parse_detail_html(html: str) -> DetailParse:
             prose = glued.group(1).strip()
             if prose:
                 description_parts.append(prose)
+                posting.append(prose)
             continue
         if section in {"preamble", "description"}:
             if section == "preamble" and _is_title_line(block):
                 continue
             description_parts.append(block)
-        elif section == "must":
+            posting.append(block)
+            continue
+        posting.append(block)
+        if section == "must":
             if _is_clearance_item(block):
                 _apply_clearance(parsed, block)
             else:
@@ -189,12 +197,14 @@ def parse_detail_html(html: str) -> DetailParse:
         parsed.must_have_quotes = []
         parsed.nice_to_have_quotes = []
         parsed.description_text = "\n\n".join(blocks).strip()
+        parsed.posting_text = parsed.description_text
         for block in blocks:
             if _is_clearance_item(block):
                 _apply_clearance(parsed, block)
         return parsed
 
     parsed.description_text = "\n\n".join(description_parts).strip()
+    parsed.posting_text = "\n\n".join(posting).strip()
     if not parsed.description_text:
         # Headings exist but the page has no prose before the skill lists.
         fallback = parsed.must_have_quotes + parsed.nice_to_have_quotes

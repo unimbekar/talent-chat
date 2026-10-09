@@ -171,9 +171,11 @@ def run_crawl(
             job.needs_review = True
         text = redact_ssn(parsed.description_text or "")
         digest = description_hash(text) if text else None
+        posting = redact_ssn(parsed.posting_text or text)
+        if posting:
+            job.careers_description_text = posting
+            job.careers_description_hash = description_hash(posting)
         if job.description_source == "admin":
-            job.careers_description_text = text
-            job.careers_description_hash = digest
             continue
         if text and digest == job.description_hash and job.description_text:
             job.description_source = job.description_source or "careers_page"
@@ -187,8 +189,6 @@ def run_crawl(
         job.description_text = structured["description_text"]
         job.description_source = "careers_page"
         job.description_hash = description_hash(job.description_text)
-        job.careers_description_text = job.description_text
-        job.careers_description_hash = job.description_hash
         job.must_have_skills = structured["must_have_skills"]
         job.nice_to_have_skills = structured["nice_to_have_skills"]
         job.clearance_required = structured["clearance_required"]

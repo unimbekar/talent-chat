@@ -95,13 +95,57 @@ def list_jobs():
                     "requisition_code": job.requisition_code,
                     "title": job.title,
                     "location": job.location,
-                    "blurb": _public_blurb(job.description_text),
+                    "blurb": _public_blurb(
+                        "\n".join(part for part in _posting_paragraphs(job) if len(part) > 60) or job.description_text
+                    ),
                 }
                 for job in rows
             ]
         }
     except SQLAlchemyError:
         return JSONResponse({"message": "The job list is unavailable right now.", "jobs": []}, status_code=503)
+    finally:
+        db.close()
+
+
+def _posting_paragraphs(job: Job) -> list[str]:
+    """The careers-page posting split into paragraphs, without the page chrome the crawl picked up."""
+    paragraphs: list[str] = []
+    seen: set[str] = set()
+    title = (job.title or "").strip().lower()
+    for raw in re.split(r"\n\s*\n|\n", job.careers_description_text or ""):
+        text = re.sub(r"[ \t]+", " ", raw).strip()
+        key = text.lower()
+        if not text or key in seen:
+            continue
+        seen.add(key)
+        if not paragraphs and (key in {"career", "careers"} or (title and key.startswith(title) and len(text) < 120)):
+            continue
+        paragraphs.append(text)
+    return paragraphs
+
+
+@router.get("/jobs/{requisition_code}")
+def job_detail(requisition_code: str):
+    """One open posting as published on the careers page. The recruiter's internal description is never sent."""
+    db = public_session()
+    try:
+        job = db.scalars(
+            select(Job).where(Job.requisition_code == requisition_code.strip(), Job.status == "open")
+        ).first()
+        if job is None:
+            return JSONResponse({"message": "That role is not open."}, status_code=404)
+        paragraphs = _posting_paragraphs(job)
+        return {
+            "requisition_code": job.requisition_code,
+            "title": job.title,
+            "location": job.location,
+            "paragraphs": paragraphs,
+            "description_note": None if paragraphs else "Full description not on file.",
+            "source_url": job.source_url,
+        }
+    except SQLAlchemyError:
+        return JSONResponse({"message": "The job list is unavailable right now."}, status_code=503)
     finally:
         db.close()
 

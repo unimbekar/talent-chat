@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { MapPin, MessageCircle, Search } from "lucide-react";
+import { FileText, MapPin, MessageCircle, Search } from "lucide-react";
 
 import { ApplyDialog, type OpenRole } from "@/components/careers/apply-dialog";
 import { AskDesk } from "@/components/careers/ask-desk";
+import { JobDetailDialog } from "@/components/careers/job-detail";
 import { BrandMark, useBrand } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +18,8 @@ export default function ChatPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [applyCode, setApplyCode] = useState("");
+  const [viewCode, setViewCode] = useState("");
+  const closeView = useCallback(() => setViewCode(""), []);
   const [desk, setDesk] = useState(false);
   const [deskAsk, setDeskAsk] = useState<{ id: number; text: string } | null>(null);
 
@@ -43,6 +46,11 @@ export default function ChatPage() {
   }, [jobs, query]);
 
   const applying = jobs.find((job) => job.requisition_code === applyCode) || null;
+
+  function askAbout(code: string) {
+    setDesk(true);
+    setDeskAsk({ id: Date.now(), text: `What does ${code} require?` });
+  }
 
   return (
     <main className="flex h-[100dvh] flex-col bg-desk text-ink">
@@ -95,7 +103,13 @@ export default function ChatPage() {
             <ul className="grid gap-3 md:grid-cols-2">
               {shown.map((job) => (
                 <li key={job.requisition_code} className="flex flex-col rounded-2xl border border-line bg-card p-4 shadow-card">
-                  <p className="font-serif text-xl leading-snug">{job.title || "Untitled role"}</p>
+                  <button
+                    type="button"
+                    onClick={() => setViewCode(job.requisition_code)}
+                    className="text-left font-serif text-xl leading-snug underline-offset-4 hover:text-pine-deep hover:underline"
+                  >
+                    {job.title || "Untitled role"}
+                  </button>
                   <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-ink/55">
                     <span className="font-mono text-xs">{job.requisition_code}</span>
                     {job.location && (
@@ -105,17 +119,17 @@ export default function ChatPage() {
                     )}
                   </p>
                   {job.blurb && <p className="mt-3 line-clamp-3 text-sm leading-6 text-ink/70">{job.blurb}</p>}
-                  <div className="mt-4 flex items-center gap-3">
+                  <div className="mt-auto flex flex-wrap items-center gap-3 pt-4">
                     <Button type="button" size="sm" onClick={() => setApplyCode(job.requisition_code)}>
                       Apply
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" onClick={() => setViewCode(job.requisition_code)}>
+                      <FileText /> Full description
                     </Button>
                     <button
                       type="button"
                       className="text-sm text-ink/55 underline-offset-2 hover:underline"
-                      onClick={() => {
-                        setDesk(true);
-                        setDeskAsk({ id: Date.now(), text: `What does ${job.requisition_code} require?` });
-                      }}
+                      onClick={() => askAbout(job.requisition_code)}
                     >
                       Ask about this
                     </button>
@@ -144,6 +158,7 @@ export default function ChatPage() {
               setApplyCode(code);
               setDesk(false);
             }}
+            onView={setViewCode}
             question={deskAsk?.text}
             questionId={deskAsk?.id}
           />
@@ -158,6 +173,21 @@ export default function ChatPage() {
         <MessageCircle className="size-4" /> Ask the Desk
       </button>
 
+      {viewCode && (
+        <JobDetailDialog
+          code={viewCode}
+          onClose={closeView}
+          onApply={(code) => {
+            setViewCode("");
+            setDesk(false);
+            setApplyCode(code);
+          }}
+          onAsk={(code) => {
+            setViewCode("");
+            askAbout(code);
+          }}
+        />
+      )}
       {applying && <ApplyDialog job={applying} onClose={() => setApplyCode("")} />}
     </main>
   );

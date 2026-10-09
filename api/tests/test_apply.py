@@ -81,6 +81,35 @@ def test_open_jobs_hide_clearance_lines_and_closed_postings(db):
         client.__exit__(None, None, None)
 
 
+def test_job_detail_shows_the_careers_posting_and_not_the_internal_description(db):
+    job = _job(db)
+    job.careers_description_text = (
+        "Career\n\nCareer\n\nUI/UX Developer - Chantilly VA\n\nUI/UX Developer - Chantilly VA\n\n"
+        "Role Overview\n\nBuild interfaces with JavaScript.\n\nClearance: TS/SCI with Full Scope Polygraph."
+    )
+    job.description_text = "Internal: client is paying 190k, do not share."
+    job.description_source = "admin"
+    db.add(Job(requisition_code="Z9", title="Gone", status="closed", careers_description_text="Old."))
+    db.commit()
+    client = _client()
+    try:
+        response = client.get("/public/jobs/A1001")
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["paragraphs"] == [
+            "Role Overview",
+            "Build interfaces with JavaScript.",
+            "Clearance: TS/SCI with Full Scope Polygraph.",
+        ]
+        assert "Internal" not in response.text
+        assert body["description_note"] is None
+
+        assert client.get("/public/jobs/Z9").status_code == 404
+        assert client.get("/public/jobs/NOPE").status_code == 404
+    finally:
+        client.__exit__(None, None, None)
+
+
 def test_fsp_is_required_and_a_yes_is_submitted(db):
     _job(db)
     client = _client()
