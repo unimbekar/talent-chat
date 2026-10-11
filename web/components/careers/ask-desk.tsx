@@ -14,6 +14,8 @@ type JobCard = {
   closed?: boolean;
 };
 
+type Source = { title: string; excerpt: string };
+
 type ChatResponse = {
   refusal?: boolean;
   notice?: string | null;
@@ -24,6 +26,7 @@ type ChatResponse = {
   jobs?: JobCard[];
   closed_jobs?: JobCard[];
   prior_codes?: string[];
+  sources?: Source[];
   limited?: boolean;
 };
 
@@ -137,7 +140,7 @@ export function AskDesk({
           <Sparkles className="size-4 text-pine" />
           <div>
             <p className="font-serif text-lg leading-tight">Ask the Desk</p>
-            <p className="text-[11px] text-ink/45">Questions about open roles</p>
+            <p className="text-[11px] text-ink/45">Open roles and company documents</p>
           </div>
         </div>
         <button type="button" className="rounded-lg p-1 text-ink/50 hover:bg-desk lg:hidden" onClick={onClose} aria-label="Close chat">
@@ -148,7 +151,7 @@ export function AskDesk({
         {turns.length === 0 && (
           <div className="rounded-2xl border border-line bg-desk px-4 py-4">
             <p className="text-sm leading-6 text-ink/70">
-              Ask which jobs need a tool, which are in a city, or what a requisition code is for. Answers use the postings on file.
+              Ask which jobs need a tool, which are in a city, or what a company document says. Job answers use the postings. Other answers use the documents on file.
             </p>
             <div className="mt-3 flex flex-col gap-2">
               {brand.examples.map((example) => (
@@ -173,7 +176,7 @@ export function AskDesk({
             </div>
           </div>
         ))}
-        {busy && <p className="text-sm text-ink/50">Looking through open roles…</p>}
+        {busy && <p className="text-sm text-ink/50">Looking that up…</p>}
       </div>
       <form onSubmit={onSubmit} className="border-t border-line p-3">
         <div className="flex items-end gap-2 rounded-2xl border border-line bg-desk p-2 focus-within:border-pine/40">
@@ -186,7 +189,7 @@ export function AskDesk({
             value={draft}
             rows={1}
             maxLength={2000}
-            placeholder="Ask about a skill, a city, or a code"
+            placeholder="Ask about a skill, a city, or a document"
             onChange={(event) => {
               setDraft(event.target.value);
               event.target.style.height = "auto";
@@ -223,6 +226,16 @@ function Answer({
     <div className="min-w-0 flex-1 space-y-2">
       {response.notice && <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-950">{response.notice}</p>}
       {response.answer && <p className="text-sm leading-6 text-ink/80">{response.answer}</p>}
+      {(response.sources || []).length > 0 && (
+        <ul className="space-y-2">
+          {response.sources?.map((source) => (
+            <li key={source.title} className="rounded-xl border border-line bg-desk px-3 py-2">
+              <p className="text-xs font-medium text-pine-deep">{source.title}</p>
+              <p className="mt-1 line-clamp-4 text-xs leading-5 text-ink/60">{source.excerpt}</p>
+            </li>
+          ))}
+        </ul>
+      )}
       {response.explain_pending && !response.answer && <p className="text-sm text-ink/45">Writing a short answer…</p>}
       {jobs.map((job) => (
         <article key={job.requisition_code} className="rounded-xl border border-line bg-white px-3 py-3">

@@ -3,11 +3,12 @@
 import { type ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { BarChart3, Briefcase, ClipboardCheck, FolderInput, LayoutDashboard, LogOut, Route, Search, Target, Users } from "lucide-react";
+import { BarChart3, BookOpen, Briefcase, ClipboardCheck, FolderInput, KeyRound, LayoutDashboard, LogOut, Route, Search, Target, Users } from "lucide-react";
 
 import { AssistantPanel, type PanelMode } from "@/components/assistant/assistant-panel";
 import { BrandMark, useBrand } from "@/components/brand";
 import { InstallButton, isActive, MobileTabs } from "@/components/mobile-nav";
+import { AlertsButton } from "@/components/push-alerts";
 import { QuickSearch } from "@/components/quick-search";
 
 const PANEL_KEY = "talent-assistant-mode";
@@ -22,6 +23,8 @@ const NAV = [
   { href: "/admin/match", label: "Match", icon: Target },
   { href: "/admin/review", label: "Review", icon: ClipboardCheck },
   { href: "/admin/ingest", label: "Ingest", icon: FolderInput },
+  { href: "/admin/knowledge", label: "Knowledge", icon: BookOpen },
+  { href: "/admin/password", label: "Password", icon: KeyRound },
 ];
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
@@ -30,11 +33,19 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const brand = useBrand();
   const signingIn = pathname === "/admin/login";
   const [panel, setPanel] = useState<PanelMode>("closed");
+  const [account, setAccount] = useState("");
 
   useEffect(() => {
     const saved = sessionStorage.getItem(PANEL_KEY);
     if (saved === "open" || saved === "wide") setPanel(saved);
-  }, []);
+    if (signingIn) return;
+    fetch("/api/admin/session")
+      .then(async (response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (data?.email) setAccount(data.email);
+      })
+      .catch(() => undefined);
+  }, [signingIn]);
 
   function changePanel(mode: PanelMode) {
     setPanel(mode);
@@ -87,7 +98,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           </nav>
           <QuickSearch />
           <span className="hidden lg:contents">
+            <AlertsButton />
             <InstallButton />
+            {account && <span className="max-w-52 truncate text-xs text-white/50" title={account}>{account}</span>}
             <button
               type="button"
               onClick={logout}

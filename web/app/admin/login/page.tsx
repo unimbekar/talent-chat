@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 export default function LoginPage() {
   const router = useRouter();
   const brand = useBrand();
+  const [email, setEmail] = useState("admin@janus-soft.com");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -35,6 +36,7 @@ export default function LoginPage() {
         if (!data) return;
         setGoogle(Boolean(data.google));
         if (data.hosted_domain) setDomain(data.hosted_domain);
+        if (data.local_email) setEmail(data.local_email);
       })
       .catch(() => undefined);
   }, []);
@@ -47,7 +49,7 @@ export default function LoginPage() {
       const response = await fetch("/api/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ email, password }),
       });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
@@ -105,19 +107,21 @@ export default function LoginPage() {
           )}
           {google && <p className="mt-2 text-xs text-ink/55">Use your @{domain} Workspace account. That sign-in can also read the Drive folders you already have access to.</p>}
           <form onSubmit={onSubmit} className={`flex flex-col gap-3 ${google ? "mt-6" : "mt-8"}`}>
-            {google && <p className="text-xs uppercase tracking-wide text-ink/45">Or use the break-glass password</p>}
+            {google && <p className="text-xs uppercase tracking-wide text-ink/45">Or use the local account</p>}
+            <Label htmlFor="email">Email</Label>
+            <Input id="email" type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required />
             <Label htmlFor="password">Password</Label>
-            <Input id="password" type="password" autoFocus autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} />
+            <Input id="password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} />
             {error && (
               <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
                 {error}
               </p>
             )}
-            <Button type="submit" size="lg" disabled={busy || !password} className="mt-2">
+            <Button type="submit" size="lg" disabled={busy || !email || !password} className="mt-2">
               {busy ? "Signing in…" : "Sign in"}
             </Button>
           </form>
-          <Link href="/chat" className="mt-8 inline-flex items-center gap-1.5 text-sm text-ink/60 hover:text-pine-deep">
+          <Link href="/jobs" className="mt-8 inline-flex items-center gap-1.5 text-sm text-ink/60 hover:text-pine-deep">
             <ArrowLeft className="size-4" /> Back to the careers page
           </Link>
         </div>

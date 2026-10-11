@@ -32,7 +32,7 @@ The careers crawl also runs inside `api`: once at startup, then every `CRAWL_INT
 
 A page URL and an API URL are two different requests.
 
-`http://localhost:3010/chat` is a Next.js page. The file is `web/app/chat/page.tsx`. Next serves HTML and JavaScript. That request never enters FastAPI.
+`http://localhost:3010/jobs` is a Next.js page. The file is `web/app/jobs/page.tsx`. `/chat` and `/finetuning` redirect there. Next serves HTML and JavaScript. That request never enters FastAPI.
 
 The page’s JavaScript then calls `fetch("/api/public/chat")`. The browser sends that to the same host and port, `localhost:3010`, so the `admin_session` cookie stays first-party.
 

@@ -6,7 +6,7 @@ This repository is the recruiting assistant for [Janus Soft Inc.](https://www.ja
 
 Two rooms share one building. Visitors never enter the recruiter room.
 
-A visitor on `/chat` asks in ordinary language. The answer is a sentence plus cards. Each card quotes the line from the posting that matched. The public database role can read jobs and cannot read candidates, emails, or phone numbers. A test fails if public code imports the recruiter modules.
+A visitor on `/jobs` asks in ordinary language. `/chat` redirects there. The answer is a sentence plus cards. Each card quotes the line from the posting that matched. The public database role can read jobs and cannot read candidates, emails, or phone numbers. A test fails if public code imports the recruiter modules.
 
 A recruiter on `/admin` works the other direction. Jobs are crawled from the careers page. Résumés come from a library folder, a Google Drive folder, or an S3 prefix. The desk keeps the newest PDF, DOC, DOCX, or TXT per person. A match is the share of mandatory posting lines the résumé covers. Below 50% the person is not listed. At 90% the match is strong. A tool named in the job title has to appear on the résumé.
 
@@ -58,6 +58,8 @@ Ingest is the third screen a recruiter lives on. Three sources, one rule: the ne
 | [postgres.md](postgres.md) | Database setup: connect, read, purge, and troubleshoot `talent`. |
 | [llm.md](llm.md) | The chat model (`qwen3.6` on Ollama) and the FastEmbed embedding model. |
 | [workflow.md](workflow.md) | How `/chat` and `/admin` reach each API, and which container handles the call. |
+| [KNOWLEDGE.md](KNOWLEDGE.md) | Knowledge base architecture, LangChain and LangGraph, and how a document question is answered. |
+| [TESTING.md](TESTING.md) | How to run the project test script, and what each group covers. |
 | [deploy.md](deploy.md) | Phase 1.5: the public instance, Bedrock, private S3, Caddy, and backup restore. |
 | [aws_deploy.md](aws_deploy.md) | CloudFormation deploy for `chat.janus-soft.com`, Google sign-in, and Drive or S3 ingest. |
 | [docs/aws-resources.md](docs/aws-resources.md) | Diagram of every AWS resource the template creates, and the containers on the instance. |
@@ -72,17 +74,18 @@ Ingest is the third screen a recruiter lives on. Three sources, one rule: the ne
 
 ## Public chat
 
-Open `/chat`. The page lists every open job. Ask the Desk, on the side, answers questions about those postings: a skill, a city, or a requisition code. Follow-up questions keep the earlier turns. The answer and the job cards come from the postings on file. A question such as “Which jobs require Spring Boot?” is matched against each posting’s requirement lines. A line that says the tool is excluded does not count. Related wording counts and is shown on the card, so a posting that requires Spring Framework is listed, with that sentence visible. Closed postings that name the tool are listed separately and marked closed. The assistant does not search candidates, emails, or phone numbers.
+Open `/jobs`. The page lists every open job. `/chat` still opens this page. Ask the Desk, on the side, answers questions about those postings: a skill, a city, or a requisition code. Follow-up questions keep the earlier turns. The answer and the job cards come from the postings on file. A question such as “Which jobs require Spring Boot?” is matched against each posting’s requirement lines. A line that says the tool is excluded does not count. Related wording counts and is shown on the card, so a posting that requires Spring Framework is listed, with that sentence visible. Closed postings that name the tool are listed separately and marked closed. The assistant does not search candidates, emails, or phone numbers. A question about a company document, such as benefits, onboarding, or a procedure, is answered from the knowledge base instead of the job list. Those documents are uploaded on the recruiter desk under Knowledge. Documents marked internal are not shown to careers visitors. See [KNOWLEDGE.md](KNOWLEDGE.md).
 
 ## Recruiter desk
 
-Sign in at `/admin`. The header links are Jobs, Candidates, Pipeline, Reports, Ingest, Find, Match, and Review. Find is described in [Find candidates](#find-candidates). Ingest is described in [Ingest résumés](#ingest-résumés). Submissions are described in [Submission pipeline](#submission-pipeline). Reports are described in [Reports](#reports).
+Sign in at `/admin`. The header links are Jobs, Candidates, Pipeline, Reports, Ingest, Knowledge, Find, Match, and Review. Find is described in [Find candidates](#find-candidates). Ingest is described in [Ingest résumés](#ingest-résumés). Submissions are described in [Submission pipeline](#submission-pipeline). Reports are described in [Reports](#reports).
 
 - **Jobs.** Open postings from the careers crawl. Each job page shows the full description, the mandatory and desired lines from the posting, and résumés that cover at least 50% of the mandatory lines. Each matching candidate shows an email and a location, or “unknown” when either is missing. Check the people you want, then copy their addresses as a comma-separated list. Nothing is sent. Close a job with a note that explains why. Closed jobs stay closed when the careers page is crawled again, and the note stays with the job so you can read it later. Reopen puts the job back on the open list. A posting that disappears from the careers page is closed with the note “No longer listed on the careers page.”
 - **Candidates.** The newest résumé on file for each person, with search and pages. Each row shows email and location, or “unknown”. Copy the addresses on the current page, copy every address in the desk as one comma-separated list, or check a few people and copy only those. Duplicate addresses are left out. Nothing is sent. A name opens that person’s profile: every job they have been submitted for, and notes that follow them.
 - **Pipeline.** A submission is one person sent for one job. The stages are Submitted, Salary, Interviewed, Offer, and Selected. Rejected and Withdrawn end it and stay on the history. Salary is stored on that submission, so the same person can have a different number on another job. Comments sit on the submission and, separately, on the person. Delete removes a mistake. Withdraw keeps the record.
 - **Reports.** Today, the last 7 days, the last 30 days, or a custom range. The page counts résumés ingested, submissions opened, and selected, rejected, or withdrawn moves. It lists people with a full-scope polygraph (FSP) or another clearance filter, and submissions whose recorded salary is greater than an amount you type. Charts cover daily activity, stage mix, clearance mix, salary bands, and the live pipeline. Export one list as CSV or the whole report as an Excel workbook.
 - **Ingest.** Point at a folder and import every résumé in it. See [Ingest résumés](#ingest-résumés).
+- **Knowledge.** Upload or paste any document: benefits, onboarding, a procedure, or a research note. Careers visitors can ask about documents marked for them. The chat retrieves the matching sections and the model answers only from those sections. Internal documents stay off the public site. See [KNOWLEDGE.md](KNOWLEDGE.md).
 - **Match.** Upload a PDF, DOC, DOCX, or TXT, or open a résumé already on file. An empty file, a wrong type, or a file with almost no text shows a colored message. While the résumé is ranking, a progress bar stays on the page. Skills on the profile are tools and languages. Confirming ranks the résumé against open jobs. A card appears only when mandatory coverage is at least 50%. A strong match is at least 90%. Desired coverage is a separate percent and does not lower the mandatory score.
 - **Review.** Pick one job and one résumé. The screen shows the mandatory and desired percents, the posting lines the résumé covers, and the lines it is still missing. When the résumé’s role and the job’s role do not overlap, the screen says so and shared wording is not counted.
 
@@ -101,6 +104,37 @@ A job page lists everyone submitted for that requisition. A candidate profile li
 A visitor applies from a job card. The form asks for a résumé, desired salary, a start date, years of experience, and whether they hold TS/SCI with a Full Scope Polygraph. That last answer is required. Without FSP the application is refused and nothing is stored. With FSP, the résumé is saved and the pipeline shows the person as Submitted for that job. The visitor cannot open the recruiter desk, change a stage, or read anyone else’s résumé.
 
 The public chat cannot read submissions, comments, or salary. Those tables are granted only to the recruiter database role. The apply route writes through the server, not through the public database role.
+
+## Application alerts
+
+### Phone and desktop alerts (no email account needed)
+
+The installed desk app can show an alert for each application on the careers page: "New application: A1001, Alex Rivera · UI/UX Developer · Chantilly, VA". Tapping it opens that submission. It uses standard Web Push, so there is no password, third-party account, or cost. The server makes its own signing key on first use and keeps it in the `push_keys` table. Alerts are encrypted for each device, so Google's, Apple's, or Mozilla's push service delivers them without being able to read them.
+
+- **Android:** open the desk in Chrome (installed or not), tap **More**, then turn on **Alerts for new applications**, and allow notifications.
+- **iPhone (iOS 16.4 or later):** add the desk to the Home Screen first, open it from there, then tap **More**, then **Alerts for new applications**.
+- **Desktop:** click **Alerts** in the header.
+
+A test alert arrives as soon as you turn alerts on. Turn alerts on separately on each device you want alerted. A device that is uninstalled or blocks notifications is removed the next time an alert is sent.
+
+### Email
+
+Each application on the careers page sends one email to the addresses in `NOTIFY_TO`. The email has the job, the applicant's name, email, phone, city, desired salary, start date, years of experience, clearance dates, and note, plus an **Open in the desk** link to the submission. The résumé is not attached; it stays in the desk. Reply goes to the applicant. A second application for the same job sends "Updated application". If sending fails, the application is still saved and the API log has the reason.
+
+To send through Google Workspace:
+
+1. On the sending mailbox (for example `desk@janus-soft.com`), turn on 2-Step Verification, then create an app password at [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords).
+2. Add to `.env`:
+   ```bash
+   NOTIFY_TO=you@janus-soft.com
+   NOTIFY_FROM="Janus Soft Recruiter Desk <desk@janus-soft.com>"
+   SMTP_USERNAME=desk@janus-soft.com
+   SMTP_PASSWORD=abcdefghijklmnop
+   DESK_URL=https://spark-42c4.tail55e197.ts.net
+   ```
+3. Restart the API with `docker compose up -d api`, then send a sample: `docker compose exec api python -m app.notify`.
+
+`NOTIFY_FROM` must be the mailbox itself or an alias of it, or Gmail rewrites the sender. Leave `NOTIFY_TO` empty to turn emails off.
 
 ## Reports
 
@@ -274,7 +308,7 @@ The Compose stack is `web`, `api`, and `postgres` (`pgvector/pgvector:pg16`). Im
    printf '%s\n' 'your-password' | uv run python -m app.hashpw > ../secrets/admin_password_hash
    ```
 
-   `docker-compose.yml` mounts `secrets/admin_password_hash` at `/run/secrets/admin_password_hash` and sets `ADMIN_PASSWORD_HASH_FILE` to that path. `secrets/` and `.env` are gitignored.
+   `docker-compose.yml` mounts `secrets/admin_password_hash` at `/run/secrets/admin_password_hash` and sets `ADMIN_PASSWORD_HASH_FILE` to that path. `secrets/` and `.env` are gitignored. After the desk is running, sign in as `admin@janus-soft.com` with that password. A signed-in recruiter can change the password at `/admin/password`. That change is stored in the database and is what sign-in checks from then on.
 
 3. Point the language model at the server already running on the Spark (Ollama, NIM, or vLLM):
 
@@ -293,11 +327,11 @@ The Compose stack is `web`, `api`, and `postgres` (`pgvector/pgvector:pg16`). Im
 
    Day-to-day start, restart, and stop commands are in [Start, restart, and stop on the DGX Spark](#start-restart-and-stop-on-the-dgx-spark).
 
-   Public chat: [http://localhost:3000/chat](http://localhost:3000/chat)
+   Public careers page: [http://localhost:3000/jobs](http://localhost:3000/jobs)
 
    Recruiter sign-in: [http://localhost:3000/admin](http://localhost:3000/admin)
 
-   `WEB_PORT` defaults to 3000. If that host port is taken, set `WEB_PORT` in `.env` and open `http://localhost:<WEB_PORT>/chat`.
+   `WEB_PORT` defaults to 3000. If that host port is taken, set `WEB_PORT` in `.env` and open `http://localhost:<WEB_PORT>/jobs`.
 
    Postgres is published only on `127.0.0.1:5432`. The API port stays on the Compose network. The first start crawls `https://www.janus-soft.com/career` when `CRAWL_ON_START` is true.
 
@@ -352,10 +386,10 @@ docker compose start
 
 4. Open the app. The host port comes from `WEB_PORT` in `.env` (this Spark uses `3010`; the default is `3000`):
 
-   - Public chat: `http://localhost:3010/chat`
+   - Public careers page: `http://localhost:3010/jobs`
    - Recruiter desk: `http://localhost:3010/admin`
 
-   From the editor browser on this machine, `localhost` is refused. Use the Spark LAN address, `http://192.168.1.189:3010/chat`. From a laptop over Tailscale, use the Spark's Tailscale address, `http://100.65.241.97:3010/chat`. The web port listens on all interfaces. Postgres stays on `127.0.0.1` only.
+   From the editor browser on this machine, `localhost` is refused. Use the Spark LAN address, `http://192.168.1.189:3010/jobs`. From a laptop over Tailscale, use the Spark's Tailscale address, `http://100.65.241.97:3010/jobs`. The web port listens on all interfaces. Postgres stays on `127.0.0.1` only.
 
 ### Restart
 
@@ -393,7 +427,7 @@ docker compose logs web --tail 50
 docker compose logs ollama-bridge --tail 20 # should show the 172.17.0.1:11434 listen line
 docker compose top                          # processes inside each container
 docker stats --no-stream                    # CPU and memory right now
-curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3010/chat          # expect 200
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3010/jobs   # expect 200
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3010/api/health    # expect 200
 docker compose exec api /app/.venv/bin/python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health').read())"
 ss -ltnp | grep 3010                        # who owns the web port
@@ -404,7 +438,7 @@ ss -ltnp | grep 3010                        # who owns the web port
 | `docker compose ps` shows `api` unhealthy or restarting | `docker compose logs api --tail 100`. The usual cause is Postgres not ready yet, or a failed migration |
 | Chat page loads and explanations say they are unavailable | `systemctl status ollama --no-pager`, then `docker compose logs ollama-bridge --tail 20` |
 | Port 3010 refuses connections on the Spark | `docker compose ps`. If `web` is missing, `docker compose up -d`. If the port is taken, change `WEB_PORT` in `.env` and run `docker compose up -d` |
-| Editor browser says connection refused for `localhost` | Open `http://192.168.1.189:3010/chat` |
+| Editor browser says connection refused for `localhost` | Open `http://192.168.1.189:3010/jobs` |
 | S3 check says the server has no AWS credentials | Run `aws login` on the Spark, then `docker compose restart api`. The API container reads `~/.aws` from the Spark. It does not keep its own access key |
 | S3 check says the login credential provider needs `botocore[crt]` | Rebuild the API image: `docker compose up -d --build api` |
 | A code change is not on the page | `docker compose up -d --build api web` |

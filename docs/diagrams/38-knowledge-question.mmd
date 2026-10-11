@@ -1,0 +1,21 @@
+sequenceDiagram
+    actor Visitor
+    participant Web
+    participant API
+    participant Router
+    participant LangGraph
+    participant Store
+    participant Model
+
+    Visitor->>Web: How do I submit a timesheet?
+    Web->>API: POST /public/chat
+    API->>Router: Job, document, or both?
+    Router-->>API: Document question
+    API->>LangGraph: invoke retrieve then draft
+    LangGraph->>Store: Sections for careers visitors
+    Store-->>LangGraph: Timesheet procedure excerpt
+    LangGraph->>Model: Question plus that excerpt only
+    Model-->>LangGraph: Two to four sentences
+    LangGraph-->>API: Answer and sources
+    API-->>Web: No job cards
+    Web-->>Visitor: The answer

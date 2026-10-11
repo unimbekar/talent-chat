@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-export function middleware(_request: NextRequest) {
+export function middleware(request: NextRequest) {
+  if (request.nextUrl.pathname === "/chat" || request.nextUrl.pathname === "/finetuning") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/jobs";
+    return NextResponse.redirect(url);
+  }
   const response = NextResponse.next();
   const extra = process.env.PUBLIC_FRAME_ANCESTOR || "";
   const ancestors = ["'self'", extra].filter(Boolean).join(" ");
@@ -9,4 +14,4 @@ export function middleware(_request: NextRequest) {
   return response;
 }
 
-export const config = { matcher: ["/chat"] };
+export const config = { matcher: ["/chat", "/finetuning", "/jobs"] };

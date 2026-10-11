@@ -6,16 +6,20 @@ import logging
 import re
 import threading
 
-from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import get_settings
+from app.knowledge.graph import answer_public, public_excerpts
+from app.knowledge.intent import wants_jobs, wants_policy
 from app.core.llm import LLMError, parse_json_content
 from app.db import admin_session, public_session
 from app.models import Job
+from app.notify import send_application_notice
+from app.push import send_application_push
 from app.careers_apply import limited as apply_limited
 from app.careers_apply import submit_application
 from app.public.refusal import REFUSAL_TEXT, is_refusal
@@ -153,6 +157,7 @@ def job_detail(requisition_code: str):
 @router.post("/apply")
 async def apply(
     request: Request,
+    background: BackgroundTasks,
     requisition_code: str = Form(""),
     full_name: str = Form(""),
     email: str = Form(""),
@@ -175,7 +180,7 @@ async def apply(
     payload = await file.read() if file is not None else b""
     db = admin_session()
     try:
-        return submit_application(
+        result = submit_application(
             db,
             llm=request.app.state.llm,
             requisition_code=requisition_code,
@@ -195,6 +200,10 @@ async def apply(
         )
     finally:
         db.close()
+    notice = result.pop("notice")
+    background.add_task(send_application_notice, notice)
+    background.add_task(send_application_push, notice)
+    return result
 
 
 @router.get("/config")
@@ -222,6 +231,18 @@ def chat(body: ChatIn, request: Request):
             {"message": "Too many questions from this network. Please try again later.", "limited": True, "jobs": []},
             status_code=429,
         )
+    if wants_policy(body.message) and not wants_jobs(body.message):
+        rag = answer_public(request.app.state.embedder, request.app.state.llm, body.message)
+        return {
+            "refusal": False,
+            "notice": None,
+            "answer": rag["answer"],
+            "explain_pending": False,
+            "jobs": [],
+            "closed_jobs": [],
+            "prior_codes": [],
+            "sources": rag["sources"],
+        }
     db = public_session()
     try:
         try:
@@ -414,7 +435,20 @@ def _explain(request, result, message: str, history: str = "") -> str:
     )
     cities = sorted({hit.job.location for hit in result.hits if hit.job.location})
     earlier = f"Earlier conversation:\n{history}\n" if history else ""
+    knowledge = ""
+    if wants_policy(message):
+        excerpts = public_excerpts(request.app.state.embedder, message)
+        if excerpts:
+            knowledge = "Knowledge base excerpts:\n" + "\n".join(
+                f"{item['title']}: {item['excerpt']}" for item in excerpts
+            )
+            system += (
+                " Knowledge base excerpts are included for the part of the question that is not about a posting. "
+                "Use them only for that part, and do not invent rules that are not written there."
+            )
     user = f"{earlier}Question: {message}\nCities in these jobs: {cities}\nRetrieved jobs:\n{payload}"
+    if knowledge:
+        user = f"{user}\n\n{knowledge}"
     raw = request.app.state.llm.complete(system=system, user=user, temperature=0.2, json_mode=False)
     text = (raw or "").strip()
     if text.startswith("{"):

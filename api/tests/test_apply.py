@@ -110,6 +110,130 @@ def test_job_detail_shows_the_careers_posting_and_not_the_internal_description(d
         client.__exit__(None, None, None)
 
 
+class _FakeSMTP:
+    sent: list = []
+    fail = False
+
+    def __init__(self, host, port, timeout=None):
+        self.host = host
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def starttls(self):
+        pass
+
+    def login(self, user, password):
+        if _FakeSMTP.fail:
+            raise OSError("535 bad credentials")
+
+    def send_message(self, message):
+        _FakeSMTP.sent.append(message)
+
+
+def test_application_emails_the_recruiters(db, monkeypatch):
+    import app.notify as notify
+    from app.config import get_settings
+
+    settings = get_settings()
+    for key, value in {
+        "notify_to": "jobs@janus-soft.com, lead@janus-soft.com",
+        "notify_from": "Recruiter Desk <desk@janus-soft.com>",
+        "smtp_username": "desk@janus-soft.com",
+        "smtp_password": "app-password",
+        "desk_url": "https://desk.example.net/",
+    }.items():
+        monkeypatch.setattr(settings, key, value)
+    monkeypatch.setattr(notify.smtplib, "SMTP", _FakeSMTP)
+    _FakeSMTP.sent = []
+    _FakeSMTP.fail = False
+    _job(db)
+    client = _client()
+    try:
+        accepted = client.post("/public/apply", data=_form(), files=_file())
+        assert accepted.status_code == 200, accepted.text
+        assert "notice" not in accepted.json()
+        assert len(_FakeSMTP.sent) == 1
+        message = _FakeSMTP.sent[0]
+        assert message["Subject"] == "New application: Alex Rivera for A1001 UI/UX Developer"
+        assert message["To"] == "jobs@janus-soft.com, lead@janus-soft.com"
+        assert message["Reply-To"] == "alex.rivera@example.com"
+        body = message.get_body(("plain",)).get_content()
+        submission = db.query(Submission).one()
+        assert f"https://desk.example.net/admin/submissions/{submission.id}" in body
+        assert "$170,000" in body and "703-555-0100" in body and "Happy to interview" in body
+        assert not [part for part in message.iter_attachments()]
+
+        _FakeSMTP.fail = True
+        again = client.post("/public/apply", data=_form(salary_usd="175000"), files=_file())
+        assert again.status_code == 200, again.text
+        assert len(_FakeSMTP.sent) == 1
+
+        _FakeSMTP.fail = False
+        monkeypatch.setattr(settings, "smtp_password", "")
+        client.post("/public/apply", data=_form(salary_usd="176000"), files=_file())
+        assert len(_FakeSMTP.sent) == 1
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_application_pushes_to_subscribed_devices(db, monkeypatch):
+    import json
+
+    import app.push as push
+    from pywebpush import WebPushException
+
+    pushed: list[tuple[str, dict, dict]] = []
+    gone: set[str] = set()
+
+    def fake_webpush(info, data, vapid_private_key, vapid_claims, ttl, timeout):
+        if info["endpoint"] in gone:
+            raise WebPushException("gone", response=type("R", (), {"status_code": 410})())
+        pushed.append((info["endpoint"], json.loads(data), vapid_claims))
+
+    monkeypatch.setattr(push, "webpush", fake_webpush)
+    _job(db)
+    client = _client()
+    phone = "https://fcm.googleapis.com/fcm/send/abc123"
+    iphone = "https://web.push.apple.com/QGt1-xyz"
+    keys = {"p256dh": "B" + "x" * 86, "auth": "y" * 22}
+    try:
+        assert client.get("/admin/push/key").status_code == 401
+        assert client.post("/admin/login", json={"password": "correct-horse"}).status_code == 200
+        key = client.get("/admin/push/key").json()
+        assert len(key["public_key"]) == 87 and key["devices"] == 0
+        assert client.get("/admin/push/key").json()["public_key"] == key["public_key"]
+
+        bad = client.post("/admin/push/subscribe", json={"endpoint": "https://evil.example.com/x", "keys": keys})
+        assert bad.status_code == 400
+        for endpoint in (phone, iphone, phone):
+            assert client.post("/admin/push/subscribe", json={"endpoint": endpoint, "keys": keys}).status_code == 200
+        assert client.get("/admin/push/key").json()["devices"] == 2
+
+        accepted = client.post("/public/apply", data=_form(), files=_file())
+        assert accepted.status_code == 200, accepted.text
+        assert {endpoint for endpoint, _, _ in pushed} == {phone, iphone}
+        payload = pushed[0][1]
+        submission = db.query(Submission).one()
+        assert payload["title"] == "New application: A1001"
+        assert payload["body"] == "Alex Rivera · UI/UX Developer · Chantilly, VA"
+        assert payload["url"] == f"/admin/submissions/{submission.id}"
+        assert pushed[0][2]["sub"].startswith("mailto:")
+
+        gone.add(iphone)
+        pushed.clear()
+        assert client.post("/admin/push/test").json() == {"sent": 1}
+        assert client.get("/admin/push/key").json()["devices"] == 1
+
+        assert client.post("/admin/push/unsubscribe", json={"endpoint": phone}).status_code == 200
+        assert client.get("/admin/push/key").json()["devices"] == 0
+    finally:
+        client.__exit__(None, None, None)
+
+
 def test_fsp_is_required_and_a_yes_is_submitted(db):
     _job(db)
     client = _client()

@@ -1,0 +1,24 @@
+flowchart TD
+    visitor[Visitor on /jobs]
+    desk[Recruiter on /admin/knowledge]
+    route{Question type}
+    jobs[Job search on postings]
+    rag[LangGraph]
+    retrieve[retrieve]
+    draft[draft]
+    answer[Answer plus sources]
+
+    desk -->|PDF Word or pasted text| split[LangChain text splitter]
+    split --> embed[Embed each section]
+    embed --> store[(knowledge_documents and knowledge_chunks)]
+
+    visitor --> route
+    route -->|Skill city or requisition| jobs
+    route -->|Document question| rag
+    route -->|Both| jobs
+    route -->|Both| rag
+    rag --> retrieve
+    retrieve --> store
+    retrieve --> draft
+    draft --> answer
+    jobs --> answer

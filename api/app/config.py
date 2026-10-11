@@ -26,6 +26,7 @@ class Settings(BaseSettings):
 
     admin_password_hash: str = ""
     admin_password_hash_file: str = ""
+    local_admin_email: str = "admin@janus-soft.com"
     session_secret: str = "dev-session-secret-change-me"
     session_secure: bool = False
 
@@ -69,6 +70,15 @@ class Settings(BaseSettings):
     s3_bucket: str = ""
     s3_ingest_prefix: str = "inbox"
     public_base_url: str = "http://localhost:3010"
+    # Where links in notification emails point. Empty means PUBLIC_BASE_URL.
+    desk_url: str = ""
+    # Careers applications are emailed to NOTIFY_TO (comma-separated). Empty turns email off.
+    notify_to: str = ""
+    notify_from: str = ""
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
     google_client_id: str = ""
     google_client_secret: str = ""
     resume_folder: str = ""

@@ -55,9 +55,9 @@ def db(_database):
     session = admin_session()
     session.execute(
         text(
-            "TRUNCATE job_applications, submission_comments, candidate_comments, submission_events, submissions, "
+            "TRUNCATE knowledge_chunks, knowledge_documents, job_applications, submission_comments, candidate_comments, submission_events, submissions, "
             "matches, candidate_chunks, job_chunks, candidates, jobs, "
-            "audit_log, admin_sessions, login_attempts RESTART IDENTITY CASCADE"
+            "audit_log, admin_sessions, login_attempts, push_subscriptions, admin_password RESTART IDENTITY CASCADE"
         )
     )
     session.execute(

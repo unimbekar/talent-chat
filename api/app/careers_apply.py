@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.admin.pipeline import SALARY_MAX
 from app.admin.routes import _store_resume
 from app.models import AuditLog, Job, JobApplication, Submission, SubmissionComment, SubmissionEvent
+from app.notify import ApplicationNotice
 
 _LOCK = threading.Lock()
 _HITS: dict[str, list[datetime]] = defaultdict(list)
@@ -235,7 +236,25 @@ def submit_application(
     session.add(SubmissionComment(submission_id=row.id, body=comment[:4000], created_at=now, updated_at=now))
     session.add(AuditLog(actor="careers", action="job_application", subject_id=row.id, outcome="submitted"))
     session.commit()
+    notice = ApplicationNotice(
+        submission_id=str(row.id),
+        created=created,
+        requisition_code=job.requisition_code,
+        title=job.title,
+        job_location=job.location,
+        full_name=name,
+        email=mail,
+        phone=phone_text,
+        location=place,
+        salary_usd=salary_usd,
+        start_on=start.isoformat(),
+        years_experience=years_experience,
+        last_tssci_on=ts_on.isoformat() if ts_on else None,
+        last_fsp_on=fsp_on.isoformat() if fsp_on else None,
+        note=remark or None,
+    )
     return {
+        "notice": notice,
         "ok": True,
         "created": created,
         "requisition_code": job.requisition_code,

@@ -1,7 +1,7 @@
 // Recruiter Desk service worker.
 // Caches only the app's own static files. Candidate data, résumés, and assistant answers
 // come from /api and are never stored on the device.
-const VERSION = "desk-v1";
+const VERSION = "desk-v2";
 const STATIC = `${VERSION}-static`;
 const SHELL = `${VERSION}-shell`;
 const OFFLINE_URL = "/offline.html";
@@ -66,6 +66,43 @@ async function navigate(event) {
     return (await caches.match(OFFLINE_URL)) || Response.error();
   }
 }
+
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { body: event.data ? event.data.text() : "" };
+  }
+  const url = typeof data.url === "string" && data.url.startsWith("/") ? data.url : "/admin/pipeline";
+  event.waitUntil(
+    self.registration.showNotification(data.title || "Recruiter desk", {
+      body: data.body || "",
+      tag: data.tag,
+      icon: "/icons/icon-192.png",
+      badge: "/icons/maskable-192.png",
+      data: { url },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = new URL(event.notification.data?.url || "/admin/pipeline", self.location.origin).href;
+  event.waitUntil(
+    (async () => {
+      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const client of windows) {
+        if (new URL(client.url).origin === self.location.origin && "focus" in client) {
+          await client.focus();
+          if ("navigate" in client) await client.navigate(target).catch(() => {});
+          return;
+        }
+      }
+      await self.clients.openWindow(target);
+    })(),
+  );
+});
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;

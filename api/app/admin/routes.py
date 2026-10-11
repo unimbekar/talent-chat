@@ -16,12 +16,14 @@ from sqlalchemy.sql.expression import nullslast
 from sqlalchemy.orm import Session
 
 from app.admin.auth import (
+    active_hash,
     clear_failures,
     cookie_name,
     issue_session,
     lock_status,
     read_session,
     record_failure,
+    save_password,
     session_claims,
     verify_password,
 )
@@ -61,6 +63,7 @@ logger = logging.getLogger(__name__)
 
 class LoginIn(BaseModel):
     password: str
+    email: str = ""
 
 
 class JobEdit(BaseModel):
@@ -123,31 +126,55 @@ def require_admin(request: Request, session: Session = Depends(get_admin_db)) ->
     return session
 
 
+def local_admin_email() -> str:
+    value = get_settings().local_admin_email.strip().lower()
+    return value or "admin@janus-soft.com"
+
+
 @router.post("/login")
 def login(body: LoginIn, request: Request, response: Response, session: Session = Depends(get_admin_db)):
     ip = client_ip(request, get_settings())
     if lock_status(session, ip):
         raise HTTPException(status_code=429, detail="Too many sign-in attempts. Try again in 15 minutes.")
-    if not verify_password(body.password):
+    email = body.email.strip().lower() or local_admin_email()
+    if email != local_admin_email() or not verify_password(body.password, session):
         record_failure(session, ip)
         _audit(session, "login", outcome="denied")
         session.commit()
-        raise HTTPException(status_code=401, detail="Incorrect password.")
+        raise HTTPException(status_code=401, detail="Incorrect email or password.")
     clear_failures(session, ip)
-    token = issue_session(session)
+    token = issue_session(session, email=email)
     _audit(session, "login", outcome="ok")
     session.commit()
     _set_session_cookie(response, token)
+    return {"ok": True, "email": email}
+
+
+class PasswordChangeIn(BaseModel):
+    current_password: str = Field(min_length=1, max_length=200)
+    new_password: str = Field(min_length=12, max_length=200)
+
+
+@router.post("/password")
+def change_password(body: PasswordChangeIn, session: Session = Depends(require_admin)):
+    if not verify_password(body.current_password, session):
+        raise HTTPException(status_code=400, detail="The current password is wrong.")
+    if body.new_password == body.current_password:
+        raise HTTPException(status_code=400, detail="Choose a password that is different from the current one.")
+    save_password(session, body.new_password)
+    _audit(session, "password", outcome="changed")
+    session.commit()
     return {"ok": True}
 
 
 @router.get("/login/options")
-def login_options():
+def login_options(session: Session = Depends(get_admin_db)):
     settings = get_settings()
     return {
         "google": google_configured(),
-        "password": bool(settings.resolved_admin_hash()),
+        "password": bool(active_hash(session)),
         "hosted_domain": settings.company_email_domain,
+        "local_email": local_admin_email(),
     }
 
 

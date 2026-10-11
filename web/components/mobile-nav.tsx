@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Download, LogOut, MoreHorizontal, Share, X, type LucideIcon } from "lucide-react";
 
+import { AlertsRow } from "@/components/push-alerts";
 import { install, usePwa } from "@/lib/pwa";
 
 export type NavItem = { href: string; label: string; icon: LucideIcon };
@@ -128,6 +129,7 @@ function MoreSheet({
           })}
         </ul>
         <div className="mt-3 flex flex-col gap-2">
+          <AlertsRow />
           <InstallRow />
           <button
             type="button"

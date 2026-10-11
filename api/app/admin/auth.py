@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import AdminSession, LoginAttempt
+from app.models import AdminPassword, AdminSession, LoginAttempt
 
 _HASHER = PasswordHasher()
 _COOKIE = "admin_session"
@@ -23,14 +23,33 @@ def cookie_name() -> str:
     return _COOKIE
 
 
-def verify_password(password: str) -> bool:
-    hashed = get_settings().resolved_admin_hash()
+def active_hash(session: Session | None) -> str:
+    """The hash set on the desk wins. Otherwise the file or environment hash."""
+    if session is not None:
+        row = session.get(AdminPassword, 1)
+        if row is not None and row.password_hash.strip():
+            return row.password_hash.strip()
+    return get_settings().resolved_admin_hash()
+
+
+def verify_password(password: str, session: Session | None = None) -> bool:
+    hashed = active_hash(session)
     if not hashed or not password:
         return False
     try:
         return _HASHER.verify(hashed, password)
     except VerifyMismatchError:
         return False
+
+
+def save_password(session: Session, password: str) -> None:
+    hashed = _HASHER.hash(password)
+    row = session.get(AdminPassword, 1)
+    if row is None:
+        session.add(AdminPassword(id=1, password_hash=hashed))
+    else:
+        row.password_hash = hashed
+        row.updated_at = datetime.now(timezone.utc)
 
 
 def _serializer() -> URLSafeTimedSerializer:

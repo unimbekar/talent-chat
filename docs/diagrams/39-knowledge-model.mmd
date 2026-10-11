@@ -1,0 +1,12 @@
+flowchart LR
+    upload[Upload]
+    doc[knowledge_documents]
+    chunk[knowledge_chunks]
+    publicAsk[Careers question]
+    internalAsk[Later staff or developer question]
+
+    upload --> doc
+    doc --> chunk
+    publicAsk -->|audience public| chunk
+    internalAsk -->|audience internal| chunk
+    publicAsk -.->|blocked| internalOnly[Internal documents]

@@ -17,7 +17,7 @@ Both options start with the same DNS step. Tailscale Funnel, below, is a third w
 
 ## Tailscale Funnel
 
-Funnel puts the app on the public internet at the Spark’s Tailscale name. On this machine that is `https://spark-42c4.tail55e197.ts.net/chat`. `tailscale funnel status` prints the name if the node is renamed.
+Funnel puts the app on the public internet at the Spark’s Tailscale name. On this machine that is `https://spark-42c4.tail55e197.ts.net/jobs`. `/chat` redirects to that page. `tailscale funnel status` prints the name if the node is renamed.
 
 `tailscale serve` is different. Serve is visible only to devices on the tailnet, and a foreground `sudo tailscale serve 3010` stops when that terminal closes. Funnel replaces it for a public address and keeps running after the terminal closes.
 
@@ -83,7 +83,7 @@ Do not move on until mail and the Google Site both work.
    docker compose -f docker-compose.yml -f docker-compose.cloudflare.yml logs -f cloudflared
    ```
 
-   Wait for `Registered tunnel connection` four times, then open `https://talent.janus-soft.com/chat`.
+   Wait for `Registered tunnel connection` four times, then open `https://talent.janus-soft.com/jobs`.
 
 The overlay also sets two API settings:
 
@@ -114,7 +114,7 @@ The app has its own admin password. Cloudflare Access adds a Google sign-in in f
    - Session duration: 24 hours
 3. Add a policy: action **Allow**, include **Emails ending in** `@janus-soft.com`.
 
-`/chat` and `/api/public/*` stay open to everyone. Test in a private browser window: `/chat` opens straight away, and `/admin` asks for a Google sign-in first.
+`/jobs` and `/api/public/*` stay open to everyone. Test in a private browser window: `/jobs` opens straight away, and `/admin` asks for a Google sign-in first.
 
 ## Step 4: Recommended Cloudflare settings
 
@@ -132,7 +132,7 @@ Cloudflare closes a proxied request that runs longer than 100 seconds (error 524
 ## Step 5: Add the button on the Google Site
 
 1. Open the site in Google Sites and go to the Careers page.
-2. Choose **Insert**, then **Button**. Name it `Ask about our open jobs` and set the link to `https://talent.janus-soft.com/chat`.
+2. Choose **Insert**, then **Button**. Name it `Ask about our open jobs` and set the link to `https://talent.janus-soft.com/jobs`.
 3. Publish the site.
 
 A button opens the chat in a full page, which works better on phones than an embedded frame. To embed instead, use **Insert**, then **Embed**, with the same URL. `PUBLIC_FRAME_ANCESTOR` must then include the frame origin Google Sites uses; check the browser console for a `frame-ancestors` error and add that origin, separated by spaces.
@@ -150,7 +150,7 @@ This keeps one backup per weekday. To restore one: `docker compose exec -T postg
 ## Checklist
 
 - [ ] Workspace mail and `www.janus-soft.com` still work after the name server change
-- [ ] `https://talent.janus-soft.com/chat` loads, with a valid certificate
+- [ ] `https://talent.janus-soft.com/jobs` loads, with a valid certificate
 - [ ] `/admin` asks for a Google sign-in, then the app password
 - [ ] Chat answers return in a few seconds
 - [ ] The rate-limit rule is on
