@@ -194,6 +194,7 @@ def test_no_delete_route_is_open_to_a_recruiter(db):
         ("put", "/admin/knowledge/{sid}", {"title": "x", "audience": "public"}, "knowledge_edit"),
         ("get", "/admin/reports/export?start=2026-01-01T00:00:00Z&end=2027-01-01T00:00:00Z", None, "export"),
         ("get", "/admin/team", None, "team"),
+        ("get", "/admin/visitors?start=2026-01-01T00:00:00Z&end=2026-02-01T00:00:00Z", None, "visitors"),
         ("post", "/admin/team", {"email": "x@janus-soft.com", "password": "long-enough-123"}, "team"),
         ("patch", "/admin/team/{sid}", {"active": False}, "team"),
     ],

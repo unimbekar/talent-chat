@@ -371,6 +371,20 @@ class KnowledgeChunk(Base):
     document: Mapped[KnowledgeDocument] = relationship(back_populates="chunks")
 
 
+class SiteVisit(Base):
+    """One careers-site view. The visitor id is a random browser id, not a person or an IP."""
+
+    __tablename__ = "site_visits"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    visitor: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    kind: Mapped[str] = mapped_column(Text)
+    path: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(Text, default="direct")
+    device: Mapped[str] = mapped_column(Text, default="desktop")
+
+
 class CrawlState(Base):
     __tablename__ = "crawl_state"
 

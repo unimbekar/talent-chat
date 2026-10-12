@@ -18,6 +18,7 @@ from app.admin.reports import router as reports_router
 from app.admin.routes import router as admin_router
 from app.admin.settings_routes import router as settings_router
 from app.admin.team_routes import router as team_router
+from app.admin.visitors import router as visitors_router
 from app.config import get_settings
 from app.core.crawler import HttpFetcher, run_crawl
 from app.core.embed import FastEmbedder
@@ -25,6 +26,7 @@ from app.core.llm import build_llm_client
 from app.db import admin_session
 from app.knowledge.routes import router as knowledge_router
 from app.public.routes import router as public_router
+from app.public.visits import router as visits_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("talent")
@@ -169,6 +171,8 @@ def create_app() -> FastAPI:
     app.include_router(knowledge_router)
     app.include_router(benefits_router)
     app.include_router(public_benefits_router)
+    app.include_router(visits_router)
+    app.include_router(visitors_router)
 
     @app.middleware("http")
     async def request_id(request: Request, call_next):

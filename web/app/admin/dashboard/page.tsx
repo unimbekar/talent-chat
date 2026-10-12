@@ -7,6 +7,7 @@ import type { LucideIcon } from "lucide-react";
 import { AlertTriangle, ArrowRight, BarChart3, Briefcase, CheckCircle2, ClipboardCheck, FolderInput, MapPin, RefreshCw, Route, Search, Sparkles, Upload, UserPlus, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { VisitorsGlance } from "@/components/visitors-glance";
 import { useCan } from "@/lib/desk";
 import { readCache, writeCache } from "@/lib/page-cache";
 
@@ -26,6 +27,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const canIngest = useCan("bulk_ingest");
   const canRecrawl = useCan("edit_jobs");
+  const canSeeVisitors = useCan("visitors");
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState("");
 
@@ -103,6 +105,8 @@ export default function DashboardPage() {
           warn={Boolean(data && data.jobs.needs_review + data.jobs.no_description > 0)}
         />
       </div>
+
+      {canSeeVisitors && <VisitorsGlance />}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <section className="panel p-5 lg:col-span-2">

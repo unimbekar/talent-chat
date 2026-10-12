@@ -3,7 +3,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { BarChart3, BookOpen, Briefcase, Calculator, ClipboardCheck, FolderInput, Gift, KeyRound, LayoutDashboard, LogOut, Route, Search, Settings, Target, UserCog, Users } from "lucide-react";
+import { Activity, BarChart3, BookOpen, Briefcase, Calculator, ClipboardCheck, FolderInput, Gift, KeyRound, LayoutDashboard, LogOut, Route, Search, Settings, Target, UserCog, Users } from "lucide-react";
 
 import { AdminOnly, RoleBadge } from "@/components/admin-only";
 import { AssistantPanel, type PanelMode } from "@/components/assistant/assistant-panel";
@@ -12,6 +12,7 @@ import { InstallButton, isActive, MobileTabs, type NavItem } from "@/components/
 import { AlertsButton } from "@/components/push-alerts";
 import { QuickSearch } from "@/components/quick-search";
 import { type Capability, type DeskAccount, DeskProvider, readAccount, shownName } from "@/lib/desk";
+import { markDeskBrowser } from "@/lib/visit";
 
 const PANEL_KEY = "talent-assistant-mode";
 
@@ -22,6 +23,7 @@ const NAV: (NavItem & { needs?: Capability })[] = [
   { href: "/admin/pipeline", label: "Pipeline", icon: Route },
   { href: "/admin/burden", label: "Burden", icon: Calculator, needs: "burden" },
   { href: "/admin/reports", label: "Reports", icon: BarChart3 },
+  { href: "/admin/visitors", label: "Visitors", icon: Activity, needs: "visitors" },
   { href: "/admin/find", label: "Find", icon: Search },
   { href: "/admin/match", label: "Match", icon: Target },
   { href: "/admin/review", label: "Review", icon: ClipboardCheck },
@@ -49,7 +51,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     fetch("/api/admin/session")
       .then(async (response) => (response.ok ? response.json() : null))
       .then((data) => {
-        if (live) setAccount(readAccount(data));
+        if (!live) return;
+        const next = readAccount(data);
+        setAccount(next);
+        if (next) markDeskBrowser();
       })
       .catch(() => undefined);
     return () => {

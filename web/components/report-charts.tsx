@@ -56,7 +56,7 @@ export function Bars({ points, empty }: { points: Point[]; empty: string }) {
         <li key={point.label}>
           <div className="mb-1 flex items-baseline justify-between gap-3 text-sm">
             <span className="truncate">{point.label}</span>
-            <span className="tabular-nums text-ink/60">{point.count}</span>
+            <span className="tabular-nums text-ink/60">{point.count.toLocaleString()}</span>
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-line">
             <div className="h-full rounded-full bg-pine" style={{ width: `${(point.count / peak) * 100}%` }} />

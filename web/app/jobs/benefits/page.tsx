@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
 import { BrandMark } from "@/components/brand";
+import { VisitBeacon } from "@/components/careers/visit-beacon";
 
 export const metadata: Metadata = { title: "Benefits" };
 
@@ -45,6 +46,7 @@ export default async function BenefitsGuidePage() {
 
   return (
     <main className="min-h-screen bg-[#FBF8F4] text-[#1C2430]">
+      <VisitBeacon path="/jobs/benefits" />
       <header className="border-b border-[#E4D9C8] bg-[#FBF8F4]/95 backdrop-blur">
         <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-4 px-5 py-4 sm:px-8">
           <div className="flex min-w-0 items-center gap-3">

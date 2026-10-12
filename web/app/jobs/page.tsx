@@ -10,6 +10,7 @@ import { JobDetailDialog } from "@/components/careers/job-detail";
 import { BrandMark, useBrand } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { trackVisit } from "@/lib/visit";
 
 export default function ChatPage() {
   const brand = useBrand();
@@ -27,7 +28,16 @@ export default function ChatPage() {
   useEffect(() => {
     const saved = sessionStorage.getItem("jobs-view");
     if (saved === "list" || saved === "cards") setView(saved);
+    trackVisit("page", "/jobs");
   }, []);
+
+  useEffect(() => {
+    if (viewCode) trackVisit("posting", viewCode);
+  }, [viewCode]);
+
+  useEffect(() => {
+    if (applyCode) trackVisit("apply", applyCode);
+  }, [applyCode]);
 
   function chooseView(next: "cards" | "list") {
     setView(next);

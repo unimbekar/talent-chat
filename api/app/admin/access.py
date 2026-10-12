@@ -25,6 +25,7 @@ CAPABILITIES = {
     "knowledge_edit": "add, edit, or remove company documents",
     "export": "export reports",
     "team": "manage desk accounts",
+    "visitors": "see careers-site visitor numbers",
 }
 
 

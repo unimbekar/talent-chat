@@ -2,7 +2,7 @@
 
 import { createContext, type ReactNode, useContext } from "react";
 
-export type Capability = "delete" | "burden" | "settings" | "edit_jobs" | "bulk_ingest" | "knowledge_edit" | "export" | "team";
+export type Capability = "delete" | "burden" | "settings" | "edit_jobs" | "bulk_ingest" | "knowledge_edit" | "export" | "team" | "visitors";
 export type Role = "admin" | "recruiter";
 
 export type DeskAccount = {
@@ -25,6 +25,7 @@ export const CAPABILITY_LABEL: Record<Capability, string> = {
   knowledge_edit: "edit company documents",
   export: "export reports",
   team: "manage team accounts",
+  visitors: "see careers-site visitor numbers",
 };
 
 const LOADING: DeskAccount = { ready: false, role: "recruiter", name: "", email: "", can: {} };
