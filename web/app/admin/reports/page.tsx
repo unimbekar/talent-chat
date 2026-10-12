@@ -8,6 +8,7 @@ import { Download } from "lucide-react";
 import { Bars, Columns, Funnel } from "@/components/report-charts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useCan } from "@/lib/desk";
 import { money } from "@/lib/pipeline";
 import { reportQuery, shiftDays, ymd, type Report } from "@/lib/reports";
 
@@ -26,6 +27,7 @@ function rangeFor(preset: string, today: string): { from: string; to: string } {
 
 export default function ReportsPage() {
   const router = useRouter();
+  const canExport = useCan("export");
   const today = useMemo(() => ymd(new Date()), []);
   const [preset, setPreset] = useState("today");
   const [from, setFrom] = useState(today);
@@ -132,9 +134,11 @@ export default function ReportsPage() {
             Ingest, submissions, clearance, and salary for a calendar range. Today follows this computer’s date. Salary is the amount saved on a submission, not a guess from the résumé.
           </p>
         </div>
-        <Button type="button" onClick={() => download("xlsx", "all")} disabled={Boolean(exporting) || from > to}>
-          <Download /> {exporting === "xlsx-all" ? "Building…" : "Excel workbook"}
-        </Button>
+        {canExport && (
+          <Button type="button" onClick={() => download("xlsx", "all")} disabled={Boolean(exporting) || from > to}>
+            <Download /> {exporting === "xlsx-all" ? "Building…" : "Excel workbook"}
+          </Button>
+        )}
       </div>
 
       <section className="panel flex flex-col gap-4 p-4">
@@ -349,6 +353,8 @@ function Metric({ label, value, note }: { label: string; value: number | string;
 }
 
 function Exporting({ busy, onClick, label, id }: { busy: string; onClick: () => void; label: string; id: string }) {
+  const canExport = useCan("export");
+  if (!canExport) return null;
   return (
     <Button type="button" variant="outline" onClick={onClick} disabled={Boolean(busy)}>
       <Download /> {busy === id ? "Exporting…" : label}
@@ -417,6 +423,7 @@ function Submissions({
   total: number;
   emphasizeSalary?: boolean;
 }) {
+  const canExport = useCan("export");
   if (!rows.length) return <p className="text-sm text-ink/55">No submissions match.</p>;
   return (
     <>
@@ -436,7 +443,11 @@ function Submissions({
           </li>
         ))}
       </ul>
-      {shown < total && <p className="mt-2 text-xs text-ink/45">Showing {shown} of {total}. Export the full list as CSV or Excel.</p>}
+      {shown < total && (
+        <p className="mt-2 text-xs text-ink/45">
+          Showing {shown} of {total}. {canExport ? "Export the full list as CSV or Excel." : "Narrow the range or filters to see the rest."}
+        </p>
+      )}
     </>
   );
 }

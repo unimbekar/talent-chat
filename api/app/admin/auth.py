@@ -10,9 +10,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import AdminPassword, AdminSession, LoginAttempt
+from app.models import AdminPassword, AdminSession, DeskUser, LoginAttempt
 
 _HASHER = PasswordHasher()
+# Compared against when the email has no account, so a wrong email takes as long as a wrong password.
+_DUMMY_HASH = _HASHER.hash("no-such-account")
 _COOKIE = "admin_session"
 _MAX_AGE = 12 * 3600
 _LOCK_AFTER = 8
@@ -56,8 +58,46 @@ def _serializer() -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(get_settings().session_secret, salt="admin-session")
 
 
-def issue_session(session: Session, *, email: str = "", google_refresh: str = "") -> str:
-    row = AdminSession(expires_at=datetime.now(timezone.utc) + timedelta(seconds=_MAX_AGE))
+def hash_password(password: str) -> str:
+    return _HASHER.hash(password)
+
+
+def find_user(session: Session, email: str) -> DeskUser | None:
+    return session.scalar(select(DeskUser).where(DeskUser.email == email.strip().lower()))
+
+
+def verify_user(session: Session, email: str, password: str) -> DeskUser | None:
+    """The active account with that email and password, or None. Always spends one hash check."""
+    user = find_user(session, email)
+    target = user.password_hash if user is not None else _DUMMY_HASH
+    try:
+        ok = bool(password) and _HASHER.verify(target, password)
+    except VerifyMismatchError:
+        ok = False
+    if not ok or user is None or not user.active:
+        return None
+    return user
+
+
+def end_sessions(session: Session, user_id: uuid.UUID) -> None:
+    for row in session.scalars(select(AdminSession).where(AdminSession.user_id == user_id)):
+        session.delete(row)
+
+
+def issue_session(
+    session: Session,
+    *,
+    email: str = "",
+    google_refresh: str = "",
+    role: str = "admin",
+    user_id: uuid.UUID | None = None,
+) -> str:
+    row = AdminSession(
+        expires_at=datetime.now(timezone.utc) + timedelta(seconds=_MAX_AGE),
+        role=role,
+        email=email or None,
+        user_id=user_id,
+    )
     session.add(row)
     session.flush()
     payload: dict[str, str] = {"sid": str(row.id)}
@@ -95,6 +135,10 @@ def read_session(session: Session, token: str | None) -> AdminSession | None:
     row = session.get(AdminSession, sid)
     if row is None or row.expires_at < datetime.now(timezone.utc):
         return None
+    if row.user_id is not None:
+        user = session.get(DeskUser, row.user_id)
+        if user is None or not user.active or user.role != row.role:
+            return None
     return row
 
 

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Download, LogOut, MoreHorizontal, Share, X, type LucideIcon } from "lucide-react";
 
 import { AlertsRow } from "@/components/push-alerts";
+import { type DeskAccount, ROLE_LABEL, shownName } from "@/lib/desk";
 import { install, usePwa } from "@/lib/pwa";
 
 export type NavItem = { href: string; label: string; icon: LucideIcon };
@@ -18,11 +19,13 @@ export function MobileTabs({
   primary,
   more,
   onLogout,
+  account,
 }: {
   pathname: string;
   primary: NavItem[];
   more: NavItem[];
   onLogout: () => void;
+  account?: DeskAccount | null;
 }) {
   const [open, setOpen] = useState(false);
   const moreActive = more.some((item) => isActive(pathname, item.href));
@@ -72,7 +75,7 @@ export function MobileTabs({
           </li>
         </ul>
       </nav>
-      {open && <MoreSheet pathname={pathname} items={more} onClose={() => setOpen(false)} onLogout={onLogout} />}
+      {open && <MoreSheet pathname={pathname} items={more} onClose={() => setOpen(false)} onLogout={onLogout} account={account} />}
     </>
   );
 }
@@ -82,11 +85,13 @@ function MoreSheet({
   items,
   onClose,
   onLogout,
+  account,
 }: {
   pathname: string;
   items: NavItem[];
   onClose: () => void;
   onLogout: () => void;
+  account?: DeskAccount | null;
 }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => event.key === "Escape" && onClose();
@@ -105,7 +110,14 @@ function MoreSheet({
       <div className="absolute inset-x-0 bottom-0 animate-sheet-up rounded-t-3xl bg-desk px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-2 shadow-lift">
         <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-ink/15" />
         <div className="mb-3 flex items-center justify-between px-1">
-          <p className="font-serif text-lg">More</p>
+          <div className="min-w-0">
+            <p className="font-serif text-lg">More</p>
+            {account && (
+              <p className="truncate text-xs text-ink/55">
+                {ROLE_LABEL[account.role]} · {shownName(account)}
+              </p>
+            )}
+          </div>
           <button type="button" onClick={onClose} className="rounded-full p-2 text-ink/60 hover:bg-ink/5" aria-label="Close">
             <X className="size-5" />
           </button>

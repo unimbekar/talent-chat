@@ -15,17 +15,20 @@ from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.sql.expression import nullslast
 from sqlalchemy.orm import Session
 
+from app.admin.access import actor_of, admin_only, capabilities, require_desk, role_of
 from app.admin.auth import (
     active_hash,
     clear_failures,
     cookie_name,
+    find_user,
+    hash_password,
     issue_session,
     lock_status,
-    read_session,
     record_failure,
     save_password,
     session_claims,
     verify_password,
+    verify_user,
 )
 from app.admin.google_auth import (
     GoogleSignInError,
@@ -55,7 +58,7 @@ from app.core.structure import skills_from_quotes
 from app.core.structure import parse_resume_profile, structure_job
 from app.core.tokens import chunk_text, job_vector_text
 from app.db import get_admin_db
-from app.models import AuditLog, CrawlState, Job, JobChunk, Match, SkillSynonym
+from app.models import AdminSession, AuditLog, CrawlState, DeskUser, Job, JobChunk, Match, SkillSynonym
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 logger = logging.getLogger(__name__)
@@ -103,7 +106,7 @@ class SynonymIn(BaseModel):
 
 
 def _audit(session: Session, action: str, subject_id: uuid.UUID | None = None, outcome: str | None = None) -> None:
-    session.add(AuditLog(actor="admin", action=action, subject_id=subject_id, outcome=outcome))
+    session.add(AuditLog(actor=actor_of(session), action=action, subject_id=subject_id, outcome=outcome))
 
 
 def _set_session_cookie(response: Response, token: str) -> None:
@@ -119,13 +122,6 @@ def _set_session_cookie(response: Response, token: str) -> None:
     )
 
 
-def require_admin(request: Request, session: Session = Depends(get_admin_db)) -> Session:
-    token = request.cookies.get(cookie_name())
-    if read_session(session, token) is None:
-        raise HTTPException(status_code=401, detail="Sign in required.")
-    return session
-
-
 def local_admin_email() -> str:
     value = get_settings().local_admin_email.strip().lower()
     return value or "admin@janus-soft.com"
@@ -137,17 +133,28 @@ def login(body: LoginIn, request: Request, response: Response, session: Session 
     if lock_status(session, ip):
         raise HTTPException(status_code=429, detail="Too many sign-in attempts. Try again in 15 minutes.")
     email = body.email.strip().lower() or local_admin_email()
-    if email != local_admin_email() or not verify_password(body.password, session):
+    role = "admin"
+    user = None
+    if email == local_admin_email():
+        ok = verify_password(body.password, session)
+    else:
+        user = verify_user(session, email, body.password)
+        ok = user is not None
+        role = user.role if user else role
+    if not ok:
         record_failure(session, ip)
-        _audit(session, "login", outcome="denied")
+        _audit(session, "login", outcome=f"denied:{email}"[:200])
         session.commit()
         raise HTTPException(status_code=401, detail="Incorrect email or password.")
     clear_failures(session, ip)
-    token = issue_session(session, email=email)
-    _audit(session, "login", outcome="ok")
+    token = issue_session(session, email=email, role=role, user_id=user.id if user else None)
+    if user is not None:
+        user.last_login_at = datetime.now(timezone.utc)
+    session.info["actor"] = email
+    _audit(session, "login", outcome=f"ok:{role}")
     session.commit()
     _set_session_cookie(response, token)
-    return {"ok": True, "email": email}
+    return {"ok": True, "email": email, "role": role}
 
 
 class PasswordChangeIn(BaseModel):
@@ -156,12 +163,22 @@ class PasswordChangeIn(BaseModel):
 
 
 @router.post("/password")
-def change_password(body: PasswordChangeIn, session: Session = Depends(require_admin)):
-    if not verify_password(body.current_password, session):
+def change_password(body: PasswordChangeIn, session: Session = Depends(require_desk)):
+    user_id = session.info.get("user_id")
+    user = session.get(DeskUser, user_id) if user_id else None
+    if user is not None:
+        current_ok = verify_user(session, user.email, body.current_password) is not None
+    else:
+        current_ok = verify_password(body.current_password, session)
+    if not current_ok:
         raise HTTPException(status_code=400, detail="The current password is wrong.")
     if body.new_password == body.current_password:
         raise HTTPException(status_code=400, detail="Choose a password that is different from the current one.")
-    save_password(session, body.new_password)
+    if user is not None:
+        user.password_hash = hash_password(body.new_password)
+        user.updated_at = datetime.now(timezone.utc)
+    else:
+        save_password(session, body.new_password)
     _audit(session, "password", outcome="changed")
     session.commit()
     return {"ok": True}
@@ -205,9 +222,20 @@ def login_google_callback(
         _audit(session, "login", outcome=exc.code)
         session.commit()
         return RedirectResponse(f"{base}/admin/login?error={exc.code}", status_code=302)
+    account = find_user(session, email)
+    if account is not None and not account.active:
+        _audit(session, "login", outcome=f"google_inactive:{email}"[:200])
+        session.commit()
+        return RedirectResponse(f"{base}/admin/login?error=inactive", status_code=302)
     clear_failures(session, ip)
-    token = issue_session(session, email=email, google_refresh=refresh)
-    _audit(session, "login", outcome=f"google:{email}")
+    role = account.role if account else "admin"
+    token = issue_session(
+        session, email=email, google_refresh=refresh, role=role, user_id=account.id if account else None
+    )
+    if account is not None:
+        account.last_login_at = datetime.now(timezone.utc)
+    session.info["actor"] = email
+    _audit(session, "login", outcome=f"google:{role}:{email}"[:200])
     session.commit()
     response = RedirectResponse(f"{base}/admin/dashboard", status_code=302)
     _set_session_cookie(response, token)
@@ -215,11 +243,16 @@ def login_google_callback(
 
 
 @router.get("/session")
-def admin_session(request: Request, session: Session = Depends(require_admin)):
-    del session
+def admin_session(request: Request, session: Session = Depends(require_desk)):
     claims = session_claims(request.cookies.get(cookie_name()))
     settings = get_settings()
+    role = role_of(session)
+    user_id = session.info.get("user_id")
+    user = session.get(DeskUser, user_id) if user_id else None
     return {
+        "role": role,
+        "can": capabilities(role),
+        "name": (user.display_name if user else None) or "",
         "email": claims.get("email") or "",
         "drive": bool(claims.get("gr")),
         "google": google_configured(),
@@ -229,15 +262,18 @@ def admin_session(request: Request, session: Session = Depends(require_admin)):
 
 
 @router.post("/logout")
-def logout(response: Response, session: Session = Depends(require_admin)):
+def logout(response: Response, session: Session = Depends(require_desk)):
     _audit(session, "logout", outcome="ok")
+    row = session.get(AdminSession, session.info.get("session_id"))
+    if row is not None:
+        session.delete(row)
     session.commit()
     response.delete_cookie(cookie_name(), path="/")
     return {"ok": True}
 
 
 @router.get("/overview")
-def overview(session: Session = Depends(require_admin)):
+def overview(session: Session = Depends(require_desk)):
     """Counts and recent activity for the dashboard."""
     from collections import Counter
     from datetime import timedelta
@@ -297,7 +333,7 @@ def overview(session: Session = Depends(require_admin)):
 
 
 @router.get("/jobs")
-def list_jobs(session: Session = Depends(require_admin)):
+def list_jobs(session: Session = Depends(require_desk)):
     jobs = session.scalars(select(Job).order_by(Job.requisition_code)).all()
     state = session.get(CrawlState, 1)
     return {
@@ -312,7 +348,7 @@ def list_jobs(session: Session = Depends(require_admin)):
 
 
 @router.get("/jobs/{code}")
-def get_job(code: str, session: Session = Depends(require_admin)):
+def get_job(code: str, session: Session = Depends(require_desk)):
     job = session.scalar(select(Job).where(Job.requisition_code == code))
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found.")
@@ -320,7 +356,7 @@ def get_job(code: str, session: Session = Depends(require_admin)):
 
 
 @router.get("/jobs/{code}/candidates")
-def job_candidates(code: str, session: Session = Depends(require_admin)):
+def job_candidates(code: str, session: Session = Depends(require_desk)):
     from app.core.structure import resume_facts
     from app.models import Candidate
 
@@ -384,7 +420,7 @@ class CloseJobIn(BaseModel):
 
 
 @router.post("/jobs/{code}/close")
-def close_job(code: str, body: CloseJobIn, session: Session = Depends(require_admin)):
+def close_job(code: str, body: CloseJobIn, session: Session = Depends(admin_only("edit_jobs"))):
     job = session.scalar(select(Job).where(Job.requisition_code == code))
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found.")
@@ -399,7 +435,7 @@ def close_job(code: str, body: CloseJobIn, session: Session = Depends(require_ad
 
 
 @router.post("/jobs/{code}/reopen")
-def reopen_job(code: str, session: Session = Depends(require_admin)):
+def reopen_job(code: str, session: Session = Depends(admin_only("edit_jobs"))):
     job = session.scalar(select(Job).where(Job.requisition_code == code))
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found.")
@@ -411,7 +447,7 @@ def reopen_job(code: str, session: Session = Depends(require_admin)):
 
 
 @router.get("/review")
-def review_pair(code: str, candidate_id: uuid.UUID, session: Session = Depends(require_admin)):
+def review_pair(code: str, candidate_id: uuid.UUID, session: Session = Depends(require_desk)):
     from app.core.skills import tools_and_languages
     from app.core.structure import resume_facts
     from app.models import Candidate
@@ -472,7 +508,7 @@ def review_pair(code: str, candidate_id: uuid.UUID, session: Session = Depends(r
 
 
 @router.post("/jobs/recrawl")
-def recrawl(request: Request, session: Session = Depends(require_admin)):
+def recrawl(request: Request, session: Session = Depends(admin_only("edit_jobs"))):
     settings = get_settings()
     open_before = set(session.scalars(select(Job.requisition_code).where(Job.status != "closed")).all())
     fetcher = HttpFetcher(timeout=20, delay_seconds=settings.crawl_request_delay_seconds)
@@ -496,7 +532,7 @@ def edit_job(
     body: JobEdit,
     request: Request,
     background: BackgroundTasks,
-    session: Session = Depends(require_admin),
+    session: Session = Depends(admin_only("edit_jobs")),
 ):
     job = session.scalar(select(Job).where(Job.requisition_code == code))
     if job is None:
@@ -547,7 +583,7 @@ async def upload_description(
     code: str,
     request: Request,
     background: BackgroundTasks,
-    session: Session = Depends(require_admin),
+    session: Session = Depends(admin_only("edit_jobs")),
     file: UploadFile | None = File(default=None),
     text: str | None = Form(default=None),
 ):
@@ -580,7 +616,7 @@ async def upload_description(
 
 
 @router.post("/synonyms")
-def add_synonym(body: SynonymIn, session: Session = Depends(require_admin)):
+def add_synonym(body: SynonymIn, session: Session = Depends(admin_only("edit_jobs"))):
     alias = body.alias.strip()
     canonical = body.canonical.strip()
     if not alias or not canonical:
@@ -656,7 +692,7 @@ def _store_resume(
 @router.post("/resumes")
 async def upload_resume(
     request: Request,
-    session: Session = Depends(require_admin),
+    session: Session = Depends(require_desk),
     file: UploadFile = File(...),
 ):
     data = await file.read()
@@ -694,7 +730,7 @@ def ingest_scan(
     request: Request,
     path: str = "",
     source: str = "folder",
-    session: Session = Depends(require_admin),
+    session: Session = Depends(admin_only("bulk_ingest")),
 ):
     if source == "folder":
         del session
@@ -717,7 +753,7 @@ class IngestStartIn(BaseModel):
 def ingest_start(
     request: Request,
     body: IngestStartIn | None = Body(default=None),
-    session: Session = Depends(require_admin),
+    session: Session = Depends(admin_only("bulk_ingest")),
 ):
     del session
     source = body.source if body else "folder"
@@ -765,7 +801,7 @@ def _remote_root(request: Request, source: str, path: str, *, download: bool) ->
 
 
 @router.get("/ingest/status")
-def ingest_progress(session: Session = Depends(require_admin)):
+def ingest_progress(session: Session = Depends(require_desk)):
     del session
     return ingest_status()
 
@@ -775,7 +811,7 @@ def confirm_resume(
     candidate_id: uuid.UUID,
     body: ConfirmIn,
     request: Request,
-    session: Session = Depends(require_admin),
+    session: Session = Depends(require_desk),
 ):
     candidate = get_candidate(session, candidate_id)
     if candidate is None:
@@ -821,7 +857,7 @@ def confirm_resume(
 
 
 @router.delete("/resumes/{candidate_id}")
-def remove_resume(candidate_id: uuid.UUID, session: Session = Depends(require_admin)):
+def remove_resume(candidate_id: uuid.UUID, session: Session = Depends(admin_only("delete"))):
     candidate = get_candidate(session, candidate_id)
     if candidate is None:
         raise HTTPException(status_code=404, detail="Candidate not found.")
@@ -833,7 +869,7 @@ def remove_resume(candidate_id: uuid.UUID, session: Session = Depends(require_ad
 
 @router.get("/resumes")
 def list_resumes(
-    session: Session = Depends(require_admin),
+    session: Session = Depends(require_desk),
     q: str = "",
     category: str = "",
     page: int = Query(default=1, ge=1),
@@ -891,7 +927,7 @@ def list_resumes(
 
 
 @router.get("/candidates/emails")
-def all_candidate_emails(session: Session = Depends(require_admin)):
+def all_candidate_emails(session: Session = Depends(require_desk)):
     """Every distinct candidate email, ignoring the Candidates page size."""
     from app.models import Candidate
 
@@ -907,7 +943,7 @@ def all_candidate_emails(session: Session = Depends(require_admin)):
 
 
 @router.post("/candidates/ask")
-def ask_candidates(body: AskIn, request: Request, session: Session = Depends(require_admin)):
+def ask_candidates(body: AskIn, request: Request, session: Session = Depends(require_desk)):
     """Answer a recruiter question such as 'ServiceNow people who live in Maryland.'"""
     message = body.message.strip()
     if not message:
@@ -945,7 +981,7 @@ def ask_candidates(body: AskIn, request: Request, session: Session = Depends(req
 
 
 @router.get("/resumes/{candidate_id}")
-def get_resume(candidate_id: uuid.UUID, session: Session = Depends(require_admin)):
+def get_resume(candidate_id: uuid.UUID, session: Session = Depends(require_desk)):
     candidate = get_candidate(session, candidate_id)
     if candidate is None:
         raise HTTPException(status_code=404, detail="Candidate not found.")
@@ -964,7 +1000,7 @@ _RESUME_TYPES = {
 
 
 @router.get("/resumes/{candidate_id}/file")
-def get_resume_file(candidate_id: uuid.UUID, download: bool = False, session: Session = Depends(require_admin)):
+def get_resume_file(candidate_id: uuid.UUID, download: bool = False, session: Session = Depends(require_desk)):
     candidate = get_candidate(session, candidate_id)
     if candidate is None:
         raise HTTPException(status_code=404, detail="Candidate not found.")

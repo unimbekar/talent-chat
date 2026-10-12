@@ -17,6 +17,7 @@ from app.admin.push_routes import router as push_router
 from app.admin.reports import router as reports_router
 from app.admin.routes import router as admin_router
 from app.admin.settings_routes import router as settings_router
+from app.admin.team_routes import router as team_router
 from app.config import get_settings
 from app.core.crawler import HttpFetcher, run_crawl
 from app.core.embed import FastEmbedder
@@ -160,6 +161,7 @@ def create_app() -> FastAPI:
     app.include_router(public_router)
     app.include_router(admin_router)
     app.include_router(settings_router)
+    app.include_router(team_router)
     app.include_router(pipeline_router)
     app.include_router(push_router)
     app.include_router(reports_router)

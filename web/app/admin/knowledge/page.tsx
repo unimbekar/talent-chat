@@ -7,6 +7,7 @@ import { BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useCan } from "@/lib/desk";
 
 type DocumentRow = {
   id: string;
@@ -26,6 +27,8 @@ const AUDIENCE: Record<string, string> = {
 
 export default function KnowledgePage() {
   const router = useRouter();
+  const canEdit = useCan("knowledge_edit");
+  const canDelete = useCan("delete");
   const [rows, setRows] = useState<DocumentRow[]>([]);
   const [title, setTitle] = useState("");
   const [audience, setAudience] = useState("public");
@@ -135,9 +138,12 @@ export default function KnowledgePage() {
         <p className="text-xs uppercase tracking-[0.18em] text-pine-deep">Library</p>
         <h1 className="mt-1 font-serif text-3xl">Knowledge base</h1>
         <p className="mt-2 text-sm leading-6 text-ink/65">
-          Upload any document people should be able to ask about: benefits, onboarding, expenses, a procedure, or a research note. Careers visitors can ask about documents marked for them. Internal documents stay off the public site.
+          {canEdit
+            ? "Upload any document people should be able to ask about: benefits, onboarding, expenses, a procedure, or a research note. Careers visitors can ask about documents marked for them. Internal documents stay off the public site."
+            : "The documents the desk assistant and the careers site answer from. Open one to read it. An admin adds, edits, or removes documents."}
         </p>
       </div>
+      {canEdit && (
       <form onSubmit={onCreate} className="flex flex-col gap-4 rounded-2xl border border-line bg-white p-5 shadow-sm">
         <span className="inline-flex size-10 items-center justify-center rounded-xl bg-pine/10 text-pine-deep">
           <BookOpen className="size-5" />
@@ -166,6 +172,8 @@ export default function KnowledgePage() {
           {busy ? "Saving…" : "Add document"}
         </Button>
       </form>
+      )}
+      {!canEdit && error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">{error}</p>}
       <ul className="flex flex-col gap-3">
         {rows.map((row) => (
           <li key={row.id} className="rounded-2xl border border-line bg-white px-4 py-4">
@@ -177,15 +185,27 @@ export default function KnowledgePage() {
                 </p>
               </div>
               <div className="flex gap-2">
-                <Button type="button" variant="outline" onClick={() => void openRow(row.id)}>Edit</Button>
-                <Button type="button" variant="outline" onClick={() => void remove(row.id)}>Delete</Button>
+                <Button type="button" variant="outline" onClick={() => void openRow(row.id)}>{canEdit ? "Edit" : "Open"}</Button>
+                {canDelete && <Button type="button" variant="outline" onClick={() => void remove(row.id)}>Delete</Button>}
               </div>
             </div>
           </li>
         ))}
         {rows.length === 0 && <li className="text-sm text-ink/50">No documents yet.</li>}
       </ul>
-      {editing && (
+      {editing && !canEdit && (
+        <article className="flex flex-col gap-3 rounded-2xl border border-line bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-serif text-2xl">{editing.title}</h2>
+              <p className="mt-1 text-xs text-ink/50">{AUDIENCE[editing.audience] || editing.audience} · {editing.source_name}</p>
+            </div>
+            <Button type="button" variant="outline" onClick={() => setEditing(null)}>Close</Button>
+          </div>
+          <p className="max-h-[32rem] overflow-y-auto whitespace-pre-wrap text-sm leading-6 text-ink/80">{editing.body || "This document has no text."}</p>
+        </article>
+      )}
+      {editing && canEdit && (
         <form onSubmit={saveEdit} className="flex flex-col gap-4 rounded-2xl border border-line bg-white p-5 shadow-sm">
           <h2 className="font-serif text-2xl">Edit {editing.title}</h2>
           <div className="flex flex-col gap-1.5">

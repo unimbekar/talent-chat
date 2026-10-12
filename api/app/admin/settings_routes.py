@@ -8,7 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.admin.routes import _audit, require_admin
+from app.admin.access import admin_only
+from app.admin.routes import _audit
 from app.config import get_settings
 from app.desk_settings import (
     ASSISTANT_KEY,
@@ -69,12 +70,12 @@ def snapshot(request: Request, session: Session) -> dict:
 
 
 @router.get("/settings")
-def get_settings_view(request: Request, session: Session = Depends(require_admin)):
+def get_settings_view(request: Request, session: Session = Depends(admin_only("settings"))):
     return snapshot(request, session)
 
 
 @router.put("/settings")
-def put_settings(body: SettingsIn, request: Request, session: Session = Depends(require_admin)):
+def put_settings(body: SettingsIn, request: Request, session: Session = Depends(admin_only("settings"))):
     if body.theme is not None:
         if body.theme not in ("dark", "light"):
             raise HTTPException(status_code=422, detail="Theme is dark or light.")
@@ -99,7 +100,7 @@ def put_settings(body: SettingsIn, request: Request, session: Session = Depends(
 
 
 @router.post("/settings/models")
-def create_model(body: ModelIn, request: Request, session: Session = Depends(require_admin)):
+def create_model(body: ModelIn, request: Request, session: Session = Depends(admin_only("settings"))):
     try:
         row = add_model(session, body.tag, body.label, body.note)
     except ValueError as exc:
@@ -110,7 +111,7 @@ def create_model(body: ModelIn, request: Request, session: Session = Depends(req
 
 
 @router.delete("/settings/models")
-def delete_model(tag: str, request: Request, session: Session = Depends(require_admin)):
+def delete_model(tag: str, request: Request, session: Session = Depends(admin_only("settings"))):
     tag = tag.strip()
     running, running_assistant, _backend = _running(request)
     if tag == running or tag == running_assistant:

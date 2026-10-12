@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useCan } from "@/lib/desk";
 import { Textarea } from "@/components/ui/textarea";
 
 type JobRow = {
@@ -34,6 +35,7 @@ type Screen = {
 
 export default function JobsPage() {
   const router = useRouter();
+  const canEdit = useCan("edit_jobs");
   const [screen, setScreen] = useState<Screen | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -141,6 +143,7 @@ export default function JobsPage() {
     });
 
   function closeControl(job: JobRow) {
+    if (!canEdit) return null;
     if (closing !== job.requisition_code) {
       return (
         <Button
@@ -180,9 +183,11 @@ export default function JobsPage() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="page-title">Jobs</h1>
-        <Button type="button" onClick={recrawl} disabled={busy}>
-          {busy ? "Recrawling…" : "Recrawl now"}
-        </Button>
+        {canEdit && (
+          <Button type="button" onClick={recrawl} disabled={busy}>
+            {busy ? "Recrawling…" : "Recrawl now"}
+          </Button>
+        )}
       </div>
       {screen?.crawl.last_error && (
         <p className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm" data-testid="crawl-error">
@@ -240,7 +245,7 @@ export default function JobsPage() {
               <th className="px-3 py-2">Submitted</th>
               <th className="px-3 py-2">Posting</th>
               <th className="px-3 py-2">Review</th>
-              <th className="px-3 py-2">Close</th>
+              {canEdit && <th className="px-3 py-2">Close</th>}
             </tr>
           </thead>
           <tbody>
@@ -269,7 +274,7 @@ export default function JobsPage() {
                   )}
                 </td>
                 <td className="px-3 py-2">{job.needs_review ? <Badge>Needs review</Badge> : ""}</td>
-                <td className="px-3 py-2">{closeControl(job)}</td>
+                {canEdit && <td className="px-3 py-2">{closeControl(job)}</td>}
               </tr>
             ))}
           </tbody>
@@ -288,7 +293,7 @@ export default function JobsPage() {
                   </Link>{" "}
                   {job.title} · {job.location} · closed
                   <p className="text-ink">{job.close_note || "No note was saved."}</p>
-                  <Button
+                  {canEdit && <Button
                     type="button"
                     variant="outline"
                     className="mt-1"
@@ -296,7 +301,7 @@ export default function JobsPage() {
                     onClick={() => reopenJob(job.requisition_code)}
                   >
                     Reopen
-                  </Button>
+                  </Button>}
                 </li>
               ))}
           </ul>

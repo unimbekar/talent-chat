@@ -30,6 +30,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.admin.access import actor_of
 from app.admin.assistant.tools import TOOL_BY_NAME, TOOLS, ToolContext, ToolError, ToolResult, run_tool
 from app.admin.find import rule_filters
 from app.config import get_settings
@@ -456,7 +457,7 @@ def run_turn(
         yield {"type": "final", "text": "I could not finish that answer. Try asking in fewer parts."}
 
     try:
-        session.add(AuditLog(actor="admin", action="assistant", outcome=(",".join(used) or "answer")[:200]))
+        session.add(AuditLog(actor=actor_of(session), action="assistant", outcome=(",".join(used) or "answer")[:200]))
         session.commit()
     except Exception:
         session.rollback()

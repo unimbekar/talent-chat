@@ -6,8 +6,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.admin.auth import cookie_name, read_session
-from app.db import get_admin_db
+from app.admin.access import admin_only, require_desk
 from app.knowledge.store import (
     KnowledgeError,
     create_document,
@@ -21,10 +20,7 @@ from app.knowledge.store import (
 router = APIRouter(prefix="/admin/knowledge", tags=["knowledge"])
 
 
-def _guard(request: Request, session: Session = Depends(get_admin_db)) -> Session:
-    if read_session(session, request.cookies.get(cookie_name())) is None:
-        raise HTTPException(status_code=401, detail="Sign in required.")
-    return session
+_editor = admin_only("knowledge_edit")
 
 
 def _fail(exc: KnowledgeError) -> None:
@@ -38,12 +34,12 @@ class KnowledgeEdit(BaseModel):
 
 
 @router.get("")
-def index(session: Session = Depends(_guard)):
+def index(session: Session = Depends(require_desk)):
     return {"documents": list_documents(session)}
 
 
 @router.get("/{document_id}")
-def read(document_id: uuid.UUID, session: Session = Depends(_guard)):
+def read(document_id: uuid.UUID, session: Session = Depends(require_desk)):
     try:
         return document_detail(session, document_id)
     except KnowledgeError as exc:
@@ -57,7 +53,7 @@ async def upload(
     audience: str = Form("public"),
     text: str = Form(""),
     file: UploadFile | None = File(None),
-    session: Session = Depends(_guard),
+    session: Session = Depends(_editor),
 ):
     body = text
     source = "Pasted text"
@@ -84,7 +80,7 @@ async def upload(
 
 
 @router.put("/{document_id}")
-def edit(document_id: uuid.UUID, body: KnowledgeEdit, request: Request, session: Session = Depends(_guard)):
+def edit(document_id: uuid.UUID, body: KnowledgeEdit, request: Request, session: Session = Depends(_editor)):
     try:
         document = update_document(
             session,
@@ -100,7 +96,7 @@ def edit(document_id: uuid.UUID, body: KnowledgeEdit, request: Request, session:
 
 
 @router.delete("/{document_id}")
-def remove(document_id: uuid.UUID, session: Session = Depends(_guard)):
+def remove(document_id: uuid.UUID, session: Session = Depends(admin_only("delete"))):
     try:
         delete_document(session, document_id)
     except KnowledgeError as exc:

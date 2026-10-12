@@ -12,7 +12,8 @@ from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.admin.assistant.engine import run_turn
-from app.admin.routes import _person_name, require_admin
+from app.admin.access import require_desk
+from app.admin.routes import _person_name
 from app.config import get_settings
 from app.core.llm import build_llm_client
 from app.db import admin_session
@@ -65,7 +66,7 @@ def _sse(event: dict) -> str:
 
 
 @router.get("/assistant/info")
-def assistant_info(request: Request, session: Session = Depends(require_admin)):
+def assistant_info(request: Request, session: Session = Depends(require_desk)):
     del session
     llm = assistant_llm(request)
     backend = get_settings().assistant_backend.strip() or get_settings().llm_backend
@@ -73,9 +74,10 @@ def assistant_info(request: Request, session: Session = Depends(require_admin)):
 
 
 @router.post("/assistant")
-def assistant(body: AssistantIn, request: Request, session: Session = Depends(require_admin)):
-    # The dependency session only proves the sign-in. The stream outlives it, so it opens its own.
-    del session
+def assistant(body: AssistantIn, request: Request, session: Session = Depends(require_desk)):
+    # The dependency session only proves the sign-in. The stream outlives it, so it opens its own
+    # and carries the role, so tools hide what the role may not see.
+    caller = dict(session.info)
     llm = assistant_llm(request)
     embedder = getattr(request.app.state, "embedder", None)
     settings = get_settings()
@@ -84,6 +86,7 @@ def assistant(body: AssistantIn, request: Request, session: Session = Depends(re
 
     def stream():
         db = admin_session()
+        db.info.update(caller)
         try:
             yield ": open\n\n"
             for event in run_turn(
@@ -115,7 +118,7 @@ def _like(value: str) -> str:
 
 
 @router.get("/search")
-def quick_search(q: str = "", session: Session = Depends(require_admin)):
+def quick_search(q: str = "", session: Session = Depends(require_desk)):
     """Instant lookup across jobs, candidates, and submissions. Every word has to match."""
     words = [word for word in q.strip().split() if word][:6]
     if not words or len(q.strip()) < 2:

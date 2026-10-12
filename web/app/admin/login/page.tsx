@@ -28,6 +28,7 @@ export default function LoginPage() {
       locked: "Too many sign-in attempts. Try again in 15 minutes.",
       state: "That sign-in link expired. Start again.",
       google: "Google did not complete sign-in. Try again.",
+      inactive: "This desk account is turned off. Ask an admin to turn it back on.",
     };
     if (code && messages[code]) setError(messages[code]);
     fetch("/api/admin/login/options")
@@ -108,7 +109,7 @@ export default function LoginPage() {
           )}
           {google && <p className="mt-2 text-xs text-ink/55">Use your @{domain} Workspace account. That sign-in can also read the Drive folders you already have access to.</p>}
           <form onSubmit={onSubmit} className={`flex flex-col gap-3 ${google ? "mt-6" : "mt-8"}`}>
-            {google && <p className="text-xs uppercase tracking-wide text-ink/45">Or use the local account</p>}
+            {google && <p className="text-xs uppercase tracking-wide text-ink/45">Or use your desk email and password</p>}
             <Label htmlFor="email">Email</Label>
             <Input id="email" type="email" autoComplete="username" placeholder="Work email" value={email} onChange={(event) => setEmail(event.target.value)} required />
             <Label htmlFor="password">Password</Label>

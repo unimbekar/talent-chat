@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { BackButton } from "@/components/back-button";
 import { Badge } from "@/components/ui/badge";
+import { useCan } from "@/lib/desk";
 import { readCache, writeCache } from "@/lib/page-cache";
 import { resumeFileUrl } from "@/lib/pipeline";
 import { Button } from "@/components/ui/button";
@@ -55,6 +56,7 @@ export default function MatchRoute() {
 
 function MatchPage() {
   const router = useRouter();
+  const canDelete = useCan("delete");
   const params = useSearchParams();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [requiredByJob, setRequiredByJob] = useState<Record<string, string>>({});
@@ -372,9 +374,11 @@ function MatchPage() {
                   <a href={resumeFileUrl(profile.id, true)}>Download résumé</a>
                 </Button>
               )}
-              <Button type="button" variant="outline" onClick={remove} disabled={ranking || uploading}>
-                Delete
-              </Button>
+              {canDelete && (
+                <Button type="button" variant="outline" onClick={remove} disabled={ranking || uploading}>
+                  Delete
+                </Button>
+              )}
             </div>
             {ranking && <WorkBar label="Comparing this résumé with each open job…" percent={rankPercent} />}
           </CardContent>

@@ -7,9 +7,11 @@ import { KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useDesk } from "@/lib/desk";
 
 export default function PasswordPage() {
   const router = useRouter();
+  const desk = useDesk();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -68,7 +70,7 @@ export default function PasswordPage() {
       <p className="text-xs uppercase tracking-[0.18em] text-pine-deep">Desk</p>
       <h1 className="mt-1 font-serif text-3xl">Change password</h1>
       <p className="mt-2 text-sm leading-6 text-ink/65">
-        This password belongs to admin@janus-soft.com. The careers site does not use it. Sign in again with the new password on any other browser.
+        {desk.email ? `This password belongs to ${desk.email}.` : "This password belongs to your desk account."} The careers site does not use it. Sign in again with the new password on any other browser.
       </p>
       <form onSubmit={onSubmit} className="mt-6 flex flex-col gap-4 rounded-2xl border border-line bg-white p-5 shadow-sm">
         <span className="inline-flex size-10 items-center justify-center rounded-xl bg-pine/10 text-pine-deep">

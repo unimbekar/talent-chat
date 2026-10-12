@@ -9,14 +9,13 @@ Comments on a submission, and notes on the person, can be edited or removed.
 from datetime import datetime, timezone
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.admin import burden as burden_calc
-from app.admin.auth import cookie_name, read_session
-from app.db import get_admin_db
+from app.admin.access import actor_of, admin_only, is_admin, require_desk
 from app.models import (
     AuditLog,
     Candidate,
@@ -63,13 +62,6 @@ EXITS = [stage.key for stage in STAGES if stage.terminal and stage.key != "selec
 CLOSED_STAGES = frozenset(EXITS)
 
 
-def require_admin(request: Request, session: Session = Depends(get_admin_db)) -> Session:
-    token = request.cookies.get(cookie_name())
-    if read_session(session, token) is None:
-        raise HTTPException(status_code=401, detail="Sign in required.")
-    return session
-
-
 class SubmissionIn(BaseModel):
     candidate_id: uuid.UUID
     requisition_code: str
@@ -95,7 +87,7 @@ def _now() -> datetime:
 
 
 def _audit(session: Session, action: str, subject_id: uuid.UUID | None, outcome: str | None = None) -> None:
-    session.add(AuditLog(actor="admin", action=action, subject_id=subject_id, outcome=outcome))
+    session.add(AuditLog(actor=actor_of(session), action=action, subject_id=subject_id, outcome=outcome))
 
 
 def _fail(status: int, message: str, **extra) -> None:
@@ -200,7 +192,7 @@ def _card(row: Submission, comment_count: int | None = None) -> dict:
         "comment_count": count,
         "candidate": _candidate_brief(row.candidate),
         "job": _job_brief(row.job),
-        "burden_summary": _burden_summary(row),
+        "burden_summary": _burden_summary(row) if _sees_burden(row) else None,
     }
 
 
@@ -212,6 +204,11 @@ def _saved_burden(row: Submission) -> burden_calc.BurdenIn | None:
         return burden_calc.parse_inputs(saved)
     except burden_calc.BurdenInputError:
         return None
+
+
+def _sees_burden(row: Submission) -> bool:
+    session = object_session(row)
+    return session is None or is_admin(session)
 
 
 def _burden_summary(row: Submission) -> dict | None:
@@ -268,7 +265,7 @@ def _detail(row: Submission) -> dict:
     payload["events"] = [_event_out(event) for event in row.events]
     payload["comments"] = [_comment_out(comment) for comment in reversed(list(row.comments))]
     payload["application"] = _application_out(row)
-    payload["burden"] = _burden_out(row)
+    payload["burden"] = _burden_out(row) if _sees_burden(row) else None
     payload["flow"] = FLOW
     payload["exits"] = EXITS
     return payload
@@ -533,7 +530,7 @@ def _pipeline_payload(session: Session, rows: list[Submission]) -> dict:
 
 @router.get("/pipeline")
 def pipeline(
-    session: Session = Depends(require_admin),
+    session: Session = Depends(require_desk),
     stage: str = "",
     scope: str = "active",
     code: str = "",
@@ -552,28 +549,28 @@ def pipeline(
 
 
 @router.get("/pipeline/stages")
-def pipeline_stages(session: Session = Depends(require_admin)):
+def pipeline_stages(session: Session = Depends(require_desk)):
     counts = counts_by_stage(session)
     return {"stages": [stage.as_dict(counts.get(stage.key, 0)) for stage in STAGES], "flow": FLOW, "exits": EXITS}
 
 
 @router.post("/submissions")
-def post_submission(body: SubmissionIn, session: Session = Depends(require_admin)):
+def post_submission(body: SubmissionIn, session: Session = Depends(require_desk)):
     return _detail(create_submission(session, body))
 
 
 @router.get("/submissions/{submission_id}")
-def get_submission(submission_id: uuid.UUID, session: Session = Depends(require_admin)):
+def get_submission(submission_id: uuid.UUID, session: Session = Depends(require_desk)):
     return _detail(_load(session, submission_id))
 
 
 @router.patch("/submissions/{submission_id}")
-def patch_submission(submission_id: uuid.UUID, body: SubmissionPatch, session: Session = Depends(require_admin)):
+def patch_submission(submission_id: uuid.UUID, body: SubmissionPatch, session: Session = Depends(require_desk)):
     return _detail(update_submission(session, submission_id, body))
 
 
 @router.delete("/submissions/{submission_id}")
-def remove_submission(submission_id: uuid.UUID, session: Session = Depends(require_admin)):
+def remove_submission(submission_id: uuid.UUID, session: Session = Depends(admin_only("delete"))):
     delete_submission(session, submission_id)
     return {"ok": True}
 
@@ -586,18 +583,18 @@ def _burden_inputs(data: dict) -> burden_calc.BurdenIn:
 
 
 @router.get("/burden/defaults")
-def burden_defaults(session: Session = Depends(require_admin)):
+def burden_defaults(session: Session = Depends(admin_only("burden"))):
     return burden_calc.defaults()
 
 
 @router.post("/burden")
-def burden_calculate(data: dict, session: Session = Depends(require_admin)):
+def burden_calculate(data: dict, session: Session = Depends(admin_only("burden"))):
     inputs = _burden_inputs(data)
     return {"inputs": inputs.model_dump(), "result": burden_calc.calculate(inputs)}
 
 
 @router.put("/submissions/{submission_id}/burden")
-def save_submission_burden(submission_id: uuid.UUID, data: dict, session: Session = Depends(require_admin)):
+def save_submission_burden(submission_id: uuid.UUID, data: dict, session: Session = Depends(admin_only("burden"))):
     row = _load(session, submission_id)
     inputs = _burden_inputs(data)
     row.burden = {"inputs": inputs.model_dump(), "saved_at": _now().isoformat()}
@@ -609,7 +606,7 @@ def save_submission_burden(submission_id: uuid.UUID, data: dict, session: Sessio
 
 
 @router.delete("/submissions/{submission_id}/burden")
-def clear_submission_burden(submission_id: uuid.UUID, session: Session = Depends(require_admin)):
+def clear_submission_burden(submission_id: uuid.UUID, session: Session = Depends(admin_only("burden"))):
     row = _load(session, submission_id)
     row.burden = None
     _audit(session, "submission_burden", row.id, "cleared")
@@ -619,7 +616,7 @@ def clear_submission_burden(submission_id: uuid.UUID, session: Session = Depends
 
 
 @router.get("/jobs/{code}/submissions")
-def job_submissions(code: str, session: Session = Depends(require_admin)):
+def job_submissions(code: str, session: Session = Depends(require_desk)):
     job = session.scalar(select(Job).where(Job.requisition_code == code))
     if job is None:
         _fail(404, "Job not found.")
@@ -628,7 +625,7 @@ def job_submissions(code: str, session: Session = Depends(require_admin)):
 
 
 @router.get("/resumes/{candidate_id}/submissions")
-def candidate_submissions(candidate_id: uuid.UUID, session: Session = Depends(require_admin)):
+def candidate_submissions(candidate_id: uuid.UUID, session: Session = Depends(require_desk)):
     candidate = session.get(Candidate, candidate_id)
     if candidate is None:
         _fail(404, "That candidate is not on file.")
@@ -640,7 +637,7 @@ def candidate_submissions(candidate_id: uuid.UUID, session: Session = Depends(re
 
 
 @router.post("/submissions/{submission_id}/comments")
-def post_submission_comment(submission_id: uuid.UUID, body: CommentIn, session: Session = Depends(require_admin)):
+def post_submission_comment(submission_id: uuid.UUID, body: CommentIn, session: Session = Depends(require_desk)):
     return _comment_out(add_submission_comment(session, submission_id, body.body))
 
 
@@ -649,7 +646,7 @@ def patch_submission_comment(
     submission_id: uuid.UUID,
     comment_id: uuid.UUID,
     body: CommentIn,
-    session: Session = Depends(require_admin),
+    session: Session = Depends(require_desk),
 ):
     return _comment_out(edit_submission_comment(session, submission_id, comment_id, body.body))
 
@@ -658,19 +655,19 @@ def patch_submission_comment(
 def delete_submission_comment(
     submission_id: uuid.UUID,
     comment_id: uuid.UUID,
-    session: Session = Depends(require_admin),
+    session: Session = Depends(admin_only("delete")),
 ):
     remove_submission_comment(session, submission_id, comment_id)
     return {"ok": True}
 
 
 @router.get("/resumes/{candidate_id}/comments")
-def get_candidate_comments(candidate_id: uuid.UUID, session: Session = Depends(require_admin)):
+def get_candidate_comments(candidate_id: uuid.UUID, session: Session = Depends(require_desk)):
     return {"comments": [_comment_out(row) for row in list_candidate_comments(session, candidate_id)]}
 
 
 @router.post("/resumes/{candidate_id}/comments")
-def post_candidate_comment(candidate_id: uuid.UUID, body: CommentIn, session: Session = Depends(require_admin)):
+def post_candidate_comment(candidate_id: uuid.UUID, body: CommentIn, session: Session = Depends(require_desk)):
     return _comment_out(add_candidate_comment(session, candidate_id, body.body))
 
 
@@ -679,7 +676,7 @@ def patch_candidate_comment(
     candidate_id: uuid.UUID,
     comment_id: uuid.UUID,
     body: CommentIn,
-    session: Session = Depends(require_admin),
+    session: Session = Depends(require_desk),
 ):
     return _comment_out(edit_candidate_comment(session, candidate_id, comment_id, body.body))
 
@@ -688,7 +685,7 @@ def patch_candidate_comment(
 def delete_candidate_comment(
     candidate_id: uuid.UUID,
     comment_id: uuid.UUID,
-    session: Session = Depends(require_admin),
+    session: Session = Depends(admin_only("delete")),
 ):
     remove_candidate_comment(session, candidate_id, comment_id)
     return {"ok": True}

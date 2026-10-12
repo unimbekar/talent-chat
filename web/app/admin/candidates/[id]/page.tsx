@@ -7,6 +7,7 @@ import { Download, Mail, MessageSquare, Phone } from "lucide-react";
 
 import { BackButton } from "@/components/back-button";
 import { CommentThread } from "@/components/comment-thread";
+import { useCan } from "@/lib/desk";
 import { SubmissionForm } from "@/components/submission-form";
 import { StageBadge } from "@/components/stage-badge";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ type Profile = {
 export default function CandidateProfilePage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const canDelete = useCan("delete");
   const id = params.id;
   const [profile, setProfile] = useState<Profile | null>(null);
   const [submissions, setSubmissions] = useState<SubmissionCard[]>([]);
@@ -198,7 +200,7 @@ export default function CandidateProfilePage() {
         empty="No notes on this person yet."
         onCreate={(body) => comment("POST", `/api/admin/resumes/${id}/comments`, body)}
         onEdit={(commentId, body) => comment("PATCH", `/api/admin/resumes/${id}/comments/${commentId}`, body)}
-        onDelete={(commentId) => comment("DELETE", `/api/admin/resumes/${id}/comments/${commentId}`)}
+        onDelete={canDelete ? (commentId) => comment("DELETE", `/api/admin/resumes/${id}/comments/${commentId}`) : undefined}
       />
     </div>
   );

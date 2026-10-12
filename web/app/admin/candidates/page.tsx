@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { CandidateMailBar, selectedEmails, shown } from "@/components/candidate-mail";
 import { IngestProgress, IngestProgressView } from "@/components/ingest-progress";
+import { useCan } from "@/lib/desk";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { resumeFileUrl } from "@/lib/pipeline";
@@ -45,6 +46,7 @@ const PAGE_SIZE = 25;
 
 export default function CandidatesPage() {
   const router = useRouter();
+  const canIngest = useCan("bulk_ingest");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("");
   const [copied, setCopied] = useState("");
@@ -193,6 +195,7 @@ export default function CandidatesPage() {
         <p className="text-sm text-ink/60">{total === 0 ? "No one on file yet" : `${total} on file`}</p>
       </div>
 
+      {canIngest && (
       <section className="panel p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -230,6 +233,7 @@ export default function CandidatesPage() {
           </div>
         )}
       </section>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm">
@@ -321,7 +325,7 @@ export default function CandidatesPage() {
 
       <div className="overflow-hidden panel">
         {screen && screen.candidates.length === 0 ? (
-          <p className="px-4 py-8 text-sm text-ink/70">{query ? "No candidate matches that search." : "Import the folder, or upload one résumé from Match."}</p>
+          <p className="px-4 py-8 text-sm text-ink/70">{query ? "No candidate matches that search." : canIngest ? "Import the folder, or upload one résumé from Match." : "Upload a résumé from Match to add someone."}</p>
         ) : (
           <ul className="divide-y divide-line">
             {(screen?.candidates || []).map((candidate) => (

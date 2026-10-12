@@ -12,7 +12,7 @@ type Props = {
   empty: string;
   onCreate: (body: string) => Promise<void>;
   onEdit: (id: string, body: string) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
+  onDelete?: (id: string) => Promise<void>;
 };
 
 export function CommentThread({ comments, heading, hint, empty, onCreate, onEdit, onDelete }: Props) {
@@ -52,6 +52,7 @@ export function CommentThread({ comments, heading, hint, empty, onCreate, onEdit
   }
 
   async function remove(id: string) {
+    if (!onDelete) return;
     setBusy(true);
     setError("");
     try {
@@ -120,9 +121,11 @@ export function CommentThread({ comments, heading, hint, empty, onCreate, onEdit
                   >
                     Edit
                   </button>
-                  <button type="button" className="text-red-700 hover:underline" onClick={() => remove(comment.id)}>
-                    Delete
-                  </button>
+                  {onDelete && (
+                    <button type="button" className="text-red-700 hover:underline" onClick={() => remove(comment.id)}>
+                      Delete
+                    </button>
+                  )}
                 </div>
               </>
             )}

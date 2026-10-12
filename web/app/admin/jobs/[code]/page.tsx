@@ -12,6 +12,7 @@ import { CandidateMailBar, copyText, selectedEmails, shown } from "@/components/
 import { Download } from "lucide-react";
 
 import { downloadCsv, percent } from "@/lib/csv";
+import { useCan } from "@/lib/desk";
 import { readCache, writeCache } from "@/lib/page-cache";
 import { resumeFileUrl } from "@/lib/pipeline";
 import { Input } from "@/components/ui/input";
@@ -55,6 +56,7 @@ type JobDetail = {
 export default function JobDetailPage() {
   const params = useParams<{ code: string }>();
   const router = useRouter();
+  const canEdit = useCan("edit_jobs");
   const code = decodeURIComponent(params.code);
   const [job, setJob] = useState<JobDetail | null>(null);
   const [location, setLocation] = useState("");
@@ -290,7 +292,14 @@ export default function JobDetailPage() {
         {job.needs_review && <Badge>Needs review</Badge>}
       </div>
 
-      {job.status !== "closed" ? (
+      {!canEdit ? (
+        job.status === "closed" && (
+          <section className="panel p-4">
+            <h2 className="font-serif text-xl">Closed</h2>
+            <p className="mt-2 text-sm leading-6">{job.close_note || "No note was saved."}</p>
+          </section>
+        )
+      ) : job.status !== "closed" ? (
         <form onSubmit={closeJob} className="panel p-4">
           <h2 className="font-serif text-xl">Close this job</h2>
           <p className="page-lead">It moves to the closed list on the jobs page. A later recrawl will not open it again.</p>
@@ -436,7 +445,26 @@ export default function JobDetailPage() {
         )}
       </section>
 
-      <form onSubmit={save} className="flex flex-col gap-4">
+      {!canEdit && (
+        <section className="panel p-4">
+          <h2 className="font-serif text-xl">Requirements</h2>
+          <p className="page-lead">What résumés are scored against. An admin edits these.</p>
+          <dl className="mt-3 grid gap-4 text-sm sm:grid-cols-2">
+            <ReadOnlyList label="Mandatory skills" items={must} />
+            <ReadOnlyList label="Desired skills" items={desired} />
+            <div>
+              <dt className="text-ink/45">City</dt>
+              <dd className="mt-1">{location || "Not set"}</dd>
+            </div>
+            <div>
+              <dt className="text-ink/45">Clearance</dt>
+              <dd className="mt-1">{clearance || "Not set"}</dd>
+            </div>
+          </dl>
+        </section>
+      )}
+
+      {canEdit && <form onSubmit={save} className="flex flex-col gap-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <SkillList label="Mandatory skills" skills={must} onChange={setMust} />
           <SkillList label="Desired skills" skills={desired} onChange={setDesired} />
@@ -461,7 +489,26 @@ export default function JobDetailPage() {
           </Button>
           {message && <p className="text-sm" role="status">{message}</p>}
         </div>
-      </form>
+      </form>}
+    </div>
+  );
+}
+
+function ReadOnlyList({ label, items }: { label: string; items: string[] }) {
+  return (
+    <div>
+      <dt className="text-ink/45">{label}</dt>
+      <dd className="mt-1">
+        {items.length === 0 ? (
+          <span className="text-ink/55">None listed</span>
+        ) : (
+          <ul className="list-disc space-y-1 pl-5">
+            {items.map((item, index) => (
+              <li key={`${index}-${item}`}>{item}</li>
+            ))}
+          </ul>
+        )}
+      </dd>
     </div>
   );
 }

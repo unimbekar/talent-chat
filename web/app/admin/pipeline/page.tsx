@@ -9,6 +9,7 @@ import { SubmissionForm } from "@/components/submission-form";
 import { StageBadge } from "@/components/stage-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useCan } from "@/lib/desk";
 import { money, personName, when, type StageInfo, type SubmissionCard } from "@/lib/pipeline";
 
 type Board = {
@@ -20,6 +21,7 @@ type Board = {
 
 export default function PipelinePage() {
   const router = useRouter();
+  const canBurden = useCan("burden");
   const [board, setBoard] = useState<Board | null>(null);
   const [stage, setStage] = useState("");
   const [scope, setScope] = useState<"active" | "closed" | "all">("active");
@@ -150,7 +152,7 @@ export default function PipelinePage() {
                   </span>
                 </span>
                 <span className="flex flex-wrap items-center justify-end gap-3">
-                  {row.burden_summary && <BurdenChip summary={row.burden_summary} />}
+                  {canBurden && row.burden_summary && <BurdenChip summary={row.burden_summary} />}
                   <span className="text-sm text-ink/70">{money(row.salary_usd)}</span>
                   <StageBadge stage={row.stage} label={row.stage_label} />
                 </span>

@@ -9,6 +9,7 @@ import { BurdenCalculator } from "@/components/burden/burden-calculator";
 import { BurdenChip } from "@/components/burden/burden-chip";
 import type { BurdenInputs, SavedBurden } from "@/lib/burden";
 import { CommentThread } from "@/components/comment-thread";
+import { useCan, useDesk } from "@/lib/desk";
 import { StageBadge } from "@/components/stage-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +40,9 @@ export default function SubmissionPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const id = params.id;
+  const desk = useDesk();
+  const canDelete = useCan("delete");
+  const canBurden = useCan("burden");
   const [row, setRow] = useState<SubmissionDetail | null>(null);
   const [stages, setStages] = useState<StageInfo[]>([]);
   const [salary, setSalary] = useState("");
@@ -215,7 +219,7 @@ export default function SubmissionPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {row.burden_summary && (
+            {canBurden && row.burden_summary && (
               <a href="#burden" className="transition hover:opacity-80">
                 <BurdenChip summary={row.burden_summary} />
               </a>
@@ -318,7 +322,7 @@ export default function SubmissionPage() {
         </Button>
       </form>
 
-      {row.burden && (
+      {canBurden && row.burden && (
         <section id="burden" className="scroll-mt-4">
           <h2 className="font-serif text-2xl">Burden and profit</h2>
           <p className="page-lead">
@@ -348,7 +352,7 @@ export default function SubmissionPage() {
           empty="No comments on this submission yet."
           onCreate={(body) => comment("POST", `/api/admin/submissions/${id}/comments`, body)}
           onEdit={(commentId, body) => comment("PATCH", `/api/admin/submissions/${id}/comments/${commentId}`, body)}
-          onDelete={(commentId) => comment("DELETE", `/api/admin/submissions/${id}/comments/${commentId}`)}
+          onDelete={canDelete ? (commentId) => comment("DELETE", `/api/admin/submissions/${id}/comments/${commentId}`) : undefined}
         />
         <section className="panel p-4">
           <h2 className="font-serif text-xl">History</h2>
@@ -364,6 +368,7 @@ export default function SubmissionPage() {
         </section>
       </div>
 
+      {canDelete ? (
       <section className="rounded-2xl border border-red-200 bg-red-50/40 p-4">
         <h2 className="font-serif text-lg text-red-900">Remove this record</h2>
         <p className="mt-1 max-w-2xl text-sm text-red-900/80">
@@ -384,6 +389,13 @@ export default function SubmissionPage() {
           </Button>
         )}
       </section>
+      ) : (
+        desk.ready && (
+          <p className="text-sm text-ink/55">
+            Wrong submission? Move it to Withdrawn to keep the history, or ask an admin to delete it.
+          </p>
+        )
+      )}
     </div>
   );
 }

@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
-import { AlertTriangle, ArrowRight, BarChart3, Briefcase, CheckCircle2, ClipboardCheck, FolderInput, MapPin, RefreshCw, Route, Search, Sparkles, UserPlus, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, BarChart3, Briefcase, CheckCircle2, ClipboardCheck, FolderInput, MapPin, RefreshCw, Route, Search, Sparkles, Upload, UserPlus, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useCan } from "@/lib/desk";
 import { readCache, writeCache } from "@/lib/page-cache";
 
 type Overview = {
@@ -23,6 +24,8 @@ const CACHE_KEY = "talent-overview";
 
 export default function DashboardPage() {
   const router = useRouter();
+  const canIngest = useCan("bulk_ingest");
+  const canRecrawl = useCan("edit_jobs");
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState("");
 
@@ -55,9 +58,15 @@ export default function DashboardPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline">
-            <Link href="/admin/ingest">
-              <FolderInput /> Import résumés
-            </Link>
+            {canIngest ? (
+              <Link href="/admin/ingest">
+                <FolderInput /> Import résumés
+              </Link>
+            ) : (
+              <Link href="/admin/match">
+                <Upload /> Add a résumé
+              </Link>
+            )}
           </Button>
           <Button asChild variant="outline">
             <Link href="/admin/reports">
@@ -118,7 +127,7 @@ export default function DashboardPage() {
                 <span className="shrink-0 text-xs text-ink/45">{ago(person.created_at)}</span>
               </li>
             ))}
-            {data && data.recent_candidates.length === 0 && <li className="py-6 text-sm text-ink/60">No résumés yet. Import a folder to get started.</li>}
+            {data && data.recent_candidates.length === 0 && <li className="py-6 text-sm text-ink/60">{canIngest ? "No résumés yet. Import a folder to get started." : "No résumés yet. Add one from Match to get started."}</li>}
             {!data && <SkeletonRows />}
           </ul>
         </section>
@@ -137,7 +146,15 @@ export default function DashboardPage() {
           )}
           <Button asChild variant="outline" size="sm" className="self-start">
             <Link href="/admin/jobs">
-              <RefreshCw /> Open jobs to recrawl
+              {canRecrawl ? (
+                <>
+                  <RefreshCw /> Open jobs to recrawl
+                </>
+              ) : (
+                <>
+                  <Briefcase /> Open jobs
+                </>
+              )}
             </Link>
           </Button>
           <div className="mt-auto rounded-xl bg-desk p-4">
@@ -145,7 +162,7 @@ export default function DashboardPage() {
               <Sparkles className="size-3.5" /> Quick start
             </p>
             <ol className="mt-2 list-decimal space-y-1 pl-4 text-sm text-ink/75">
-              <li>Import résumés from a folder.</li>
+              <li>{canIngest ? "Import résumés from a folder." : "Add a résumé from Match."}</li>
               <li>Ask Find for people, in plain words.</li>
               <li>Review several people against one job.</li>
               <li>Submit the ones you send, and track salary, interviews, and the decision.</li>

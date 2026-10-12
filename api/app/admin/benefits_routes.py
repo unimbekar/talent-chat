@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.admin.routes import require_admin
+from app.admin.access import require_desk
 
 router = APIRouter(prefix="/admin/benefits", tags=["benefits"])
 public_router = APIRouter(prefix="/public/benefits", tags=["benefits"])
@@ -32,7 +32,7 @@ def load_guide() -> dict:
 
 
 @router.get("")
-def read_benefits(session: Session = Depends(require_admin)):
+def read_benefits(session: Session = Depends(require_desk)):
     del session
     guide = load_guide()
     guide["download"] = "/admin/benefits/download"
@@ -40,7 +40,7 @@ def read_benefits(session: Session = Depends(require_admin)):
 
 
 @router.get("/download")
-def download_benefits(session: Session = Depends(require_admin)):
+def download_benefits(session: Session = Depends(require_desk)):
     del session
     guide = load_guide()
     path = benefits_dir() / guide["filename"]
@@ -64,7 +64,7 @@ def _media_file(name: str) -> tuple[Path, str]:
 
 
 @router.get("/media/{name}")
-def benefit_media(name: str, session: Session = Depends(require_admin)):
+def benefit_media(name: str, session: Session = Depends(require_desk)):
     del session
     path, media = _media_file(name)
     return FileResponse(path, media_type=media)

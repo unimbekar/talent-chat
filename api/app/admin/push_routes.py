@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.admin.pipeline import require_admin
+from app.admin.access import actor_of, require_desk
 from app.models import AuditLog, PushSubscription
 from app.push import allowed_endpoint, send_to_all, vapid_key
 
@@ -27,14 +27,14 @@ class EndpointIn(BaseModel):
 
 
 @router.get("/key")
-def public_key(session: Session = Depends(require_admin)):
+def public_key(session: Session = Depends(require_desk)):
     _, key = vapid_key(session)
     devices = session.scalar(select(func.count()).select_from(PushSubscription)) or 0
     return {"public_key": key, "devices": devices}
 
 
 @router.post("/subscribe")
-def subscribe(body: SubscriptionIn, request: Request, session: Session = Depends(require_admin)):
+def subscribe(body: SubscriptionIn, request: Request, session: Session = Depends(require_desk)):
     if not allowed_endpoint(body.endpoint):
         raise HTTPException(status_code=400, detail={"message": "That is not a browser push service."})
     row = session.scalar(select(PushSubscription).where(PushSubscription.endpoint == body.endpoint))
@@ -44,23 +44,23 @@ def subscribe(body: SubscriptionIn, request: Request, session: Session = Depends
     row.p256dh = body.keys.p256dh
     row.auth = body.keys.auth
     row.device = (request.headers.get("user-agent") or "")[:300] or None
-    session.add(AuditLog(actor="admin", action="push_subscribe", outcome="on"))
+    session.add(AuditLog(actor=actor_of(session), action="push_subscribe", outcome="on"))
     session.commit()
     return {"ok": True}
 
 
 @router.post("/unsubscribe")
-def unsubscribe(body: EndpointIn, session: Session = Depends(require_admin)):
+def unsubscribe(body: EndpointIn, session: Session = Depends(require_desk)):
     row = session.scalar(select(PushSubscription).where(PushSubscription.endpoint == body.endpoint))
     if row is not None:
         session.delete(row)
-        session.add(AuditLog(actor="admin", action="push_subscribe", outcome="off"))
+        session.add(AuditLog(actor=actor_of(session), action="push_subscribe", outcome="off"))
         session.commit()
     return {"ok": True}
 
 
 @router.post("/test")
-def test(session: Session = Depends(require_admin)):
+def test(session: Session = Depends(require_desk)):
     sent = send_to_all(
         session,
         {

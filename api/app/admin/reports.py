@@ -13,7 +13,8 @@ from fastapi.responses import Response
 from sqlalchemy import Date, cast, func, select
 from sqlalchemy.orm import Session
 
-from app.admin.pipeline import STAGES, require_admin
+from app.admin.access import admin_only, require_desk
+from app.admin.pipeline import STAGES
 from app.admin.xlsx import workbook
 from app.models import Candidate, Job, Submission, SubmissionEvent
 
@@ -489,7 +490,7 @@ def get_report(
     salary_gt: int | None = None,
     salary_scope: str = "all",
     clearance_scope: str = "all",
-    session: Session = Depends(require_admin),
+    session: Session = Depends(require_desk),
 ):
     del request
     return build_report(
@@ -519,7 +520,7 @@ def export_report(
     salary_gt: int | None = None,
     salary_scope: str = "all",
     clearance_scope: str = "all",
-    session: Session = Depends(require_admin),
+    session: Session = Depends(admin_only("export")),
 ):
     del request
     if format not in {"csv", "xlsx"}:
