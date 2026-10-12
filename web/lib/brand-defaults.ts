@@ -7,6 +7,7 @@ export type Brand = {
   hero_url: string;
   footer: string;
   examples: string[];
+  theme: "dark" | "light";
 };
 
 export const DEFAULT_BRAND: Brand = {
@@ -18,4 +19,5 @@ export const DEFAULT_BRAND: Brand = {
   hero_url: "/brand/hero.jpg",
   footer: "",
   examples: ["Which jobs require Spring Boot?", "Java and AWS jobs", "Jobs in Chantilly", "Do any roles need a clearance?"],
+  theme: "dark",
 };

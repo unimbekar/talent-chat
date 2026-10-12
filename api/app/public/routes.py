@@ -206,6 +206,19 @@ async def apply(
     return result
 
 
+def _public_theme() -> str:
+    session = public_session()
+    try:
+        from app.desk_settings import read_theme
+
+        return read_theme(session)
+    except SQLAlchemyError:
+        logger.exception("theme setting unavailable")
+        return "dark"
+    finally:
+        session.close()
+
+
 @router.get("/config")
 def public_config() -> dict:
     settings = get_settings()
@@ -218,6 +231,7 @@ def public_config() -> dict:
         "hero_url": settings.brand_hero_url,
         "footer": settings.brand_footer,
         "examples": [item.strip() for item in settings.chat_examples.split("|") if item.strip()],
+        "theme": _public_theme(),
     }
 
 

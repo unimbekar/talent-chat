@@ -41,7 +41,7 @@ function Labeled({ text }: { text: string }) {
   if (!split) return <>{text}</>;
   return (
     <>
-      <span className="font-medium text-ink">{split[1]}:</span> {split[2]}
+      <span className="font-medium text-white">{split[1]}:</span> {split[2]}
     </>
   );
 }
@@ -94,7 +94,7 @@ export function JobDetailDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-night/50 sm:items-center sm:p-6"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center sm:p-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="posting-title"
@@ -102,15 +102,15 @@ export function JobDetailDialog({
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-3xl bg-card shadow-lift animate-fade-in sm:max-h-[88dvh] sm:max-w-2xl sm:rounded-3xl">
-        <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
+      <div className="careers-sheet flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-3xl animate-fade-in sm:max-h-[88dvh] sm:max-w-2xl sm:rounded-3xl">
+        <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-4">
           <div className="min-w-0">
-            <p className="text-xs uppercase tracking-[0.16em] text-ink/45">Open role</p>
-            <h2 id="posting-title" className="font-serif text-2xl leading-tight">
+            <p className="careers-kicker">Open role</p>
+            <h2 id="posting-title" className="mt-2 text-2xl font-medium leading-tight tracking-tight">
               {posting?.title || "Loading…"}
             </h2>
-            <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-ink/55">
-              <span className="font-mono text-xs">{code}</span>
+            <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-white/55">
+              <span className="font-mono text-xs text-[#9ce2ff]/80">{code}</span>
               {posting?.location && (
                 <span className="inline-flex items-center gap-1">
                   <MapPin className="size-3.5" /> {posting.location}
@@ -118,26 +118,26 @@ export function JobDetailDialog({
               )}
             </p>
           </div>
-          <button ref={closeButton} type="button" onClick={onClose} className="rounded-lg p-1 text-ink/50 hover:bg-desk" aria-label="Close">
+          <button ref={closeButton} type="button" onClick={onClose} className="rounded-lg p-1 text-white/50 hover:bg-white/10" aria-label="Close">
             <X className="size-5" />
           </button>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5">
-          {error && <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>}
+          {error && <p className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">{error}</p>}
           {!error && !posting && (
             <div className="space-y-3" aria-label="Loading posting">
               {[80, 95, 70, 90, 60].map((width, index) => (
-                <div key={index} className="h-3 animate-pulse rounded bg-desk" style={{ width: `${width}%` }} />
+                <div key={index} className="h-3 animate-pulse rounded bg-white/10" style={{ width: `${width}%` }} />
               ))}
             </div>
           )}
-          {posting?.description_note && <p className="text-sm text-ink/60">{posting.description_note}</p>}
+          {posting?.description_note && <p className="text-sm text-white/60">{posting.description_note}</p>}
           {posting && posting.paragraphs.length > 0 && (
-            <div className="space-y-2 text-sm leading-6 text-ink/75">
+            <div className="space-y-2 text-sm leading-6 text-white/75">
               {blocks(posting.paragraphs).map((block, index) =>
                 block.kind === "heading" ? (
-                  <h3 key={index} className="pt-3 font-serif text-lg text-ink first:pt-0">
+                  <h3 key={index} className="pt-3 text-lg font-medium tracking-tight text-white first:pt-0">
                     {block.text}
                   </h3>
                 ) : block.kind === "item" ? (
@@ -154,12 +154,12 @@ export function JobDetailDialog({
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 border-t border-line px-5 py-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
-          <Button type="button" onClick={() => onApply(code)} disabled={!!error}>
+        <div className="flex flex-wrap items-center gap-3 border-t border-white/10 px-5 py-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
+          <Button type="button" className="careers-action" onClick={() => onApply(code)} disabled={!!error}>
             Apply
           </Button>
           {onAsk && (
-            <Button type="button" variant="outline" onClick={() => onAsk(code)} disabled={!!error}>
+            <Button type="button" variant="outline" className="careers-quiet" onClick={() => onAsk(code)} disabled={!!error}>
               <MessageCircle /> Ask about this
             </Button>
           )}
@@ -168,7 +168,7 @@ export function JobDetailDialog({
               href={posting.source_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="ml-auto inline-flex items-center gap-1 text-sm text-ink/55 underline-offset-2 hover:text-pine-deep hover:underline"
+              className="ml-auto inline-flex items-center gap-1 text-sm text-white/55 underline-offset-2 hover:text-white hover:underline"
             >
               On the careers site <ExternalLink className="size-3.5" />
             </a>

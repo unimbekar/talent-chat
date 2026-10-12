@@ -4,10 +4,12 @@ const api = process.env.API_INTERNAL_URL || "http://127.0.0.1:8000";
 
 export async function loadBrand(): Promise<Brand> {
   try {
-    const response = await fetch(`${api}/public/config`, { next: { revalidate: 300 } });
+    const response = await fetch(`${api}/public/config`, { cache: "no-store" });
     if (!response.ok) return DEFAULT_BRAND;
     const data = (await response.json()) as Partial<Brand>;
-    return { ...DEFAULT_BRAND, ...Object.fromEntries(Object.entries(data).filter(([, value]) => value != null && value !== "")) };
+    const brand = { ...DEFAULT_BRAND, ...Object.fromEntries(Object.entries(data).filter(([, value]) => value != null && value !== "")) };
+    if (brand.theme !== "light" && brand.theme !== "dark") brand.theme = "dark";
+    return brand;
   } catch {
     return DEFAULT_BRAND;
   }

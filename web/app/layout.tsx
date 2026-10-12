@@ -32,7 +32,7 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const brand = await loadBrand();
   return (
-    <html lang="en" style={brandStyle(brand.accent) as CSSProperties}>
+    <html lang="en" data-theme={brand.theme === "light" ? "light" : "dark"} style={brandStyle(brand.accent) as CSSProperties}>
       <body className="min-h-screen bg-desk font-sans text-ink antialiased">
         <BrandProvider brand={brand}>
           {children}

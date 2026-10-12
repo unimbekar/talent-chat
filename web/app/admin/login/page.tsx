@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 export default function LoginPage() {
   const router = useRouter();
   const brand = useBrand();
-  const [email, setEmail] = useState("admin@janus-soft.com");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -36,7 +36,6 @@ export default function LoginPage() {
         if (!data) return;
         setGoogle(Boolean(data.google));
         if (data.hosted_domain) setDomain(data.hosted_domain);
-        if (data.local_email) setEmail(data.local_email);
       })
       .catch(() => undefined);
   }, []);
@@ -65,20 +64,22 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="grid min-h-screen lg:grid-cols-[1.1fr_1fr]">
-      <section
-        className="relative hidden overflow-hidden bg-night text-white lg:block"
-        style={{ backgroundImage: `url("${brand.hero_url}")`, backgroundSize: "cover", backgroundPosition: "75% center" }}
-      >
-        <div className="absolute inset-0 bg-gradient-to-r from-night via-night/80 to-transparent" aria-hidden="true" />
+    <main className="admin grid min-h-screen lg:grid-cols-[1.1fr_1fr]">
+      <section className="careers relative hidden overflow-hidden lg:block">
+        <div className="careers-atmosphere" aria-hidden="true">
+          <div className="careers-glow careers-glow-a" />
+          <div className="careers-glow careers-glow-b" />
+          <div className="careers-grid" />
+          <div className="careers-noise" />
+        </div>
         <div className="relative flex h-full flex-col justify-between p-10">
           <div className="flex items-center gap-3">
-            <BrandMark className="size-10" />
-            <p className="font-serif text-xl">{brand.company_name}</p>
+            <BrandMark className="size-10 ring-1 ring-white/10" />
+            <p className="text-xl tracking-tight">{brand.company_name}</p>
           </div>
           <div className="max-w-md">
-            <p className="text-xs uppercase tracking-[0.22em] text-pine-soft">Recruiter desk</p>
-            <h1 className="mt-3 font-serif text-4xl leading-tight">Match the right people to every opening.</h1>
+            <p className="careers-kicker">Recruiter desk</p>
+            <h1 className="mt-3 text-4xl font-medium leading-tight tracking-tight">Match the right people to every opening.</h1>
             <p className="mt-4 text-sm leading-6 text-white/70">
               Import résumés, ask for candidates in plain words, and see exactly which posting lines each person covers.
             </p>
@@ -109,7 +110,7 @@ export default function LoginPage() {
           <form onSubmit={onSubmit} className={`flex flex-col gap-3 ${google ? "mt-6" : "mt-8"}`}>
             {google && <p className="text-xs uppercase tracking-wide text-ink/45">Or use the local account</p>}
             <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required />
+            <Input id="email" type="email" autoComplete="username" placeholder="Work email" value={email} onChange={(event) => setEmail(event.target.value)} required />
             <Label htmlFor="password">Password</Label>
             <Input id="password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} />
             {error && (

@@ -14,6 +14,7 @@ from app.admin.pipeline import router as pipeline_router
 from app.admin.push_routes import router as push_router
 from app.admin.reports import router as reports_router
 from app.admin.routes import router as admin_router
+from app.admin.settings_routes import router as settings_router
 from app.config import get_settings
 from app.core.crawler import HttpFetcher, run_crawl
 from app.core.embed import FastEmbedder
@@ -26,10 +27,28 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logger = logging.getLogger("talent")
 
 
+def _saved_model_names() -> tuple[str, str]:
+    """Chat and assistant tags saved in settings. Empty strings mean use the environment."""
+    from app.desk_settings import saved_assistant_model, saved_chat_model
+
+    session = admin_session()
+    try:
+        return saved_chat_model(session), saved_assistant_model(session)
+    finally:
+        session.close()
+
+
 def _crawl_once() -> None:
     settings = get_settings()
     session = admin_session()
     try:
+        try:
+            from app.desk_settings import resolved_chat_model
+
+            model = resolved_chat_model(session, settings.llm_model)
+        except Exception:
+            logger.exception("saved chat model unavailable; crawl uses the environment model")
+            model = settings.llm_model
         fetcher = HttpFetcher(timeout=20, delay_seconds=settings.crawl_request_delay_seconds)
         run_crawl(
             session,
@@ -38,7 +57,7 @@ def _crawl_once() -> None:
             llm=build_llm_client(
                 settings.llm_backend,
                 settings.llm_base_url,
-                settings.llm_model,
+                model,
                 settings.llm_api_key,
                 settings.aws_region,
             ),
@@ -78,13 +97,34 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     if settings.llm_backend == "bedrock" and not settings.s3_bucket.strip():
         logger.warning("S3_BUCKET is empty while LLM_BACKEND=bedrock; résumé files stay on container disk")
+    chat_model = settings.llm_model
+    assistant_model = settings.assistant_model.strip()
+    try:
+        saved_chat, saved_assistant = _saved_model_names()
+        if saved_chat:
+            chat_model = saved_chat
+        if saved_assistant:
+            assistant_model = saved_assistant
+    except Exception:
+        logger.exception("saved model settings unavailable; starting with the environment model")
     app.state.llm = build_llm_client(
         settings.llm_backend,
         settings.llm_base_url,
-        settings.llm_model,
+        chat_model,
         settings.llm_api_key,
         settings.aws_region,
     )
+    app.state.running_model = chat_model
+    if assistant_model and assistant_model != chat_model:
+        backend = settings.assistant_backend.strip() or settings.llm_backend
+        app.state.assistant_llm = build_llm_client(
+            backend,
+            settings.llm_base_url,
+            assistant_model,
+            settings.llm_api_key,
+            settings.aws_region,
+        )
+    app.state.running_assistant_model = assistant_model or chat_model
     app.state.embedder = FastEmbedder(settings.embedding_model)
     if settings.warm_resume_cache:
         threading.Thread(target=_warm_resume_cache, name="warm-resume-cache", daemon=True).start()
@@ -100,6 +140,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title=get_settings().company_name, lifespan=lifespan)
     app.include_router(public_router)
     app.include_router(admin_router)
+    app.include_router(settings_router)
     app.include_router(pipeline_router)
     app.include_router(push_router)
     app.include_router(reports_router)

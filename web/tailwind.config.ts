@@ -5,17 +5,17 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        desk: "#f7f4ee",
-        ink: "#1f1d1a",
-        night: "#151413",
+        desk: "rgb(var(--desk) / <alpha-value>)",
+        ink: "rgb(var(--ink) / <alpha-value>)",
+        night: "rgb(var(--night) / <alpha-value>)",
         // The accent comes from BRAND_ACCENT at run time, so one setting rebrands every button and link.
         pine: {
           DEFAULT: "rgb(var(--brand) / <alpha-value>)",
           deep: "rgb(var(--brand-deep) / <alpha-value>)",
           soft: "rgb(var(--brand-soft) / <alpha-value>)",
         },
-        card: "#ffffff",
-        line: "#e7e1d6",
+        card: "rgb(var(--card) / <alpha-value>)",
+        line: "rgb(var(--line) / <alpha-value>)",
       },
       fontFamily: {
         serif: ["Iowan Old Style", "Palatino Linotype", "Palatino", "Georgia", "serif"],

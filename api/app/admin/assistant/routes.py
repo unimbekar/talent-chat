@@ -47,15 +47,16 @@ def _assistant_model() -> tuple[str, str]:
 
 
 def assistant_llm(request: Request):
-    """The app's LLM, or a separate client when ASSISTANT_BACKEND or ASSISTANT_MODEL is set."""
+    """The client built at startup, including a model saved in desk settings."""
+    client = getattr(request.app.state, "assistant_llm", None)
+    if client is not None:
+        return client
     settings = get_settings()
     if not (settings.assistant_backend.strip() or settings.assistant_model.strip()):
         return request.app.state.llm
-    client = getattr(request.app.state, "assistant_llm", None)
-    if client is None:
-        backend, model = _assistant_model()
-        client = build_llm_client(backend, settings.llm_base_url, model, settings.llm_api_key, settings.aws_region)
-        request.app.state.assistant_llm = client
+    backend, model = _assistant_model()
+    client = build_llm_client(backend, settings.llm_base_url, model, settings.llm_api_key, settings.aws_region)
+    request.app.state.assistant_llm = client
     return client
 
 
@@ -64,10 +65,11 @@ def _sse(event: dict) -> str:
 
 
 @router.get("/assistant/info")
-def assistant_info(session: Session = Depends(require_admin)):
+def assistant_info(request: Request, session: Session = Depends(require_admin)):
     del session
-    backend, model = _assistant_model()
-    return {"backend": backend, "model": model}
+    llm = assistant_llm(request)
+    backend = get_settings().assistant_backend.strip() or get_settings().llm_backend
+    return {"backend": backend, "model": getattr(llm, "model", "") or _assistant_model()[1]}
 
 
 @router.post("/assistant")

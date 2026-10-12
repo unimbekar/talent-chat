@@ -174,7 +174,6 @@ def login_options(session: Session = Depends(get_admin_db)):
         "google": google_configured(),
         "password": bool(active_hash(session)),
         "hosted_domain": settings.company_email_domain,
-        "local_email": local_admin_email(),
     }
 
 

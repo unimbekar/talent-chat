@@ -3,7 +3,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { BarChart3, BookOpen, Briefcase, ClipboardCheck, FolderInput, KeyRound, LayoutDashboard, LogOut, Route, Search, Target, Users } from "lucide-react";
+import { BarChart3, BookOpen, Briefcase, ClipboardCheck, FolderInput, KeyRound, LayoutDashboard, LogOut, Route, Search, Settings, Target, Users } from "lucide-react";
 
 import { AssistantPanel, type PanelMode } from "@/components/assistant/assistant-panel";
 import { BrandMark, useBrand } from "@/components/brand";
@@ -24,6 +24,7 @@ const NAV = [
   { href: "/admin/review", label: "Review", icon: ClipboardCheck },
   { href: "/admin/ingest", label: "Ingest", icon: FolderInput },
   { href: "/admin/knowledge", label: "Knowledge", icon: BookOpen },
+  { href: "/admin/settings", label: "Settings", icon: Settings },
   { href: "/admin/password", label: "Password", icon: KeyRound },
 ];
 
@@ -65,17 +66,23 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const current = NAV.find((item) => isActive(pathname, item.href));
 
   return (
-    <div className={`flex min-h-screen flex-col transition-[padding] ${room}`}>
-      <header className="sticky top-0 z-30 border-b border-black/20 bg-night pt-[env(safe-area-inset-top)] text-white shadow-lift">
+    <div className={`admin flex min-h-screen flex-col transition-[padding] ${room}`}>
+      <div className="admin-atmosphere" aria-hidden="true">
+        <div className="careers-glow careers-glow-a" />
+        <div className="careers-glow careers-glow-b" />
+        <div className="careers-grid" />
+        <div className="careers-noise" />
+      </div>
+      <header className="careers-bar sticky top-0 z-30 pt-[env(safe-area-inset-top)] text-ink">
         <div className="mx-auto flex w-full max-w-7xl items-center gap-x-6 gap-y-2 px-4 py-2.5 lg:flex-wrap">
           <Link href="/admin/dashboard" className="flex min-w-0 items-center gap-2.5">
-            <BrandMark className="size-8 shrink-0" />
+            <BrandMark className="size-8 shrink-0 rounded-xl ring-1 ring-white/10" />
             <span className="min-w-0 leading-tight">
-              <span className="block truncate font-serif text-base">
+              <span className="block truncate text-base font-medium tracking-tight">
                 <span className="lg:hidden">{current?.label || brand.company_name}</span>
                 <span className="hidden lg:inline">{brand.company_name}</span>
               </span>
-              <span className="block text-[10px] uppercase tracking-[0.22em] text-pine-soft">Recruiter desk</span>
+              <span className="careers-kicker">Recruiter desk</span>
             </span>
           </Link>
           <span className="flex-1 lg:hidden" />
@@ -113,8 +120,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       </header>
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 pb-32 pt-5 sm:pt-8 lg:pb-8">{children}</main>
       {brand.footer && (
-        <footer className="border-t border-line pb-[calc(env(safe-area-inset-bottom)+4rem)] lg:pb-0">
-          <p className="mx-auto w-full max-w-7xl px-4 py-4 text-xs leading-5 text-ink/55">{brand.footer}</p>
+        <footer className="border-t border-white/10 pb-[calc(env(safe-area-inset-bottom)+4rem)] lg:pb-0">
+          <p className="mx-auto w-full max-w-7xl px-4 py-4 text-xs leading-5 text-white/40">{brand.footer}</p>
         </footer>
       )}
       <MobileTabs pathname={pathname} primary={NAV.slice(0, 4)} more={NAV.slice(4)} onLogout={logout} />
