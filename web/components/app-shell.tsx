@@ -20,7 +20,7 @@ export function AppShell() {
         </p>
       )}
       {updateReady && (
-        <div role="status" className="pointer-events-auto inline-flex animate-fade-up items-center gap-3 rounded-full bg-night py-2 pl-4 pr-2 text-xs text-white shadow-lift ring-1 ring-white/10">
+        <div role="status" className="pointer-events-auto inline-flex animate-fade-up items-center gap-3 rounded-full bg-[#122033] py-2 pl-4 pr-2 text-xs text-[#f7fafc] shadow-lift ring-1 ring-black/10">
           A new version of the desk is ready.
           <button type="button" onClick={applyUpdate} className="inline-flex items-center gap-1.5 rounded-full bg-pine px-3 py-1.5 font-medium text-white">
             <RefreshCw className="size-3.5" /> Update

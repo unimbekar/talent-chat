@@ -104,7 +104,50 @@ def _docx(data: bytes) -> str:
         document = Document(BytesIO(data))
     except Exception as exc:
         raise ExtractError("Could not read that DOCX file.") from exc
-    return "\n".join(paragraph.text for paragraph in document.paragraphs)
+    return "\n".join(_docx_blocks(document.element.body))
+
+
+_W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+
+
+def _docx_paragraph(element) -> str:
+    parts = ["\t" if node.tag == f"{_W}tab" else (node.text or "") for node in element.iter(f"{_W}t", f"{_W}tab")]
+    return "".join(parts).strip()
+
+
+def _docx_blocks(container) -> list[str]:
+    """Paragraphs and tables in reading order. Many résumés and guides are laid out in tables."""
+    lines: list[str] = []
+    for child in container.iterchildren():
+        if child.tag == f"{_W}p":
+            lines.append(_docx_paragraph(child))
+        elif child.tag == f"{_W}tbl":
+            lines.extend(_docx_table(child))
+        elif child.tag == f"{_W}sdt":
+            content = child.find(f"{_W}sdtContent")
+            if content is not None:
+                lines.extend(_docx_blocks(content))
+    return lines
+
+
+def _docx_table(table) -> list[str]:
+    lines: list[str] = []
+    for row in table.iterchildren(f"{_W}tr"):
+        cells: list[list[str]] = []
+        for cell in row.iterchildren(f"{_W}tc"):
+            text = [line for line in _docx_blocks(cell) if line.strip()]
+            if text:
+                cells.append(text)
+        if not cells:
+            continue
+        # A row of short single-line cells is a real table row; anything else is page layout.
+        if len(cells) > 1 and all(len(cell) == 1 and len(cell[0]) <= 90 for cell in cells):
+            lines.append(" | ".join(cell[0] for cell in cells))
+        else:
+            for cell in cells:
+                lines.extend(cell)
+                lines.append("")
+    return lines
 
 
 def _pdf(data: bytes) -> str:

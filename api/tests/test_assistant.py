@@ -254,7 +254,7 @@ def test_tool_errors_go_back_to_the_model(db):
 
 def test_every_tool_runs_against_the_desk(db):
     people = _seed(db)
-    ctx = ToolContext(session=db, grounding="Java in Maryland with secret clearance")
+    ctx = ToolContext(session=db, embedder=RecordingEmbedder(), grounding="Java in Maryland with secret clearance")
     args = {
         "find_candidates": {"skills": ["Java"]},
         "candidate_profile": {"candidate_name": "Alex Rivera"},
@@ -266,6 +266,7 @@ def test_every_tool_runs_against_the_desk(db):
         "submission_details": {"submission_id": str(db.query(Submission).one().id)},
         "desk_stats": {},
         "report": {"start_date": "2020-01-01", "end_date": "2020-12-31", "salary_above": 100000},
+        "company_documents": {"question": "What is the 401k match?"},
     }
     assert set(args) == {tool.name for tool in TOOLS}
     for tool in TOOLS:

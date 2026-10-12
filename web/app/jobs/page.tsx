@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { FileText, LayoutGrid, List, MapPin, MessageCircle, Search } from "lucide-react";
+import { FileText, Gift, LayoutGrid, List, MapPin, MessageCircle, Search } from "lucide-react";
 
 import { ApplyDialog, type OpenRole } from "@/components/careers/apply-dialog";
 import { AskDesk } from "@/components/careers/ask-desk";
@@ -81,6 +81,9 @@ export default function ChatPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <Link href="/jobs/benefits" className="inline-flex items-center gap-1.5 text-sm text-white/70 underline-offset-4 hover:text-white hover:underline">
+            <Gift className="size-3.5" /> Benefits
+          </Link>
           <a href={brand.careers_url} className="hidden text-sm text-white/55 hover:text-white sm:inline">
             Company site
           </a>
@@ -99,6 +102,9 @@ export default function ChatPage() {
               <p className="careers-lead">
                 Browse every open posting, ask about a skill, a city, or a company document, and apply with your résumé.
               </p>
+              <Link href="/jobs/benefits" className="inline-flex w-fit items-center gap-2 text-sm text-white/80 underline-offset-4 hover:text-white hover:underline">
+                <Gift className="size-4" /> See the full benefits guide
+              </Link>
               <div className="careers-trace" aria-hidden="true" />
               <p className="max-w-lg text-xs leading-5 text-white/45">
                 A current TS/SCI with Full Scope Polygraph is required.
@@ -191,7 +197,7 @@ export default function ChatPage() {
                       {view === "cards" && <span className="careers-index">{String(index + 1).padStart(2, "0")}</span>}
                     </div>
                     <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-white/50">
-                      <span className="font-mono text-xs tracking-wide text-[#9ce2ff]/80">{job.requisition_code}</span>
+                      <span className="careers-code font-mono text-xs tracking-wide">{job.requisition_code}</span>
                       {job.location && (
                         <span className="inline-flex items-center gap-1">
                           <MapPin className="size-3.5" /> {job.location}

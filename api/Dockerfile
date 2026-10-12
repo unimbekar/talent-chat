@@ -22,6 +22,7 @@ COPY api/alembic ./alembic
 COPY api/alembic.ini ./alembic.ini
 COPY api/pyproject.toml api/uv.lock ./
 COPY configs /app/configs
+COPY benefits /app/benefits
 RUN uv sync --frozen --no-dev
 COPY api/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

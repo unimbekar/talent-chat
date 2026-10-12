@@ -13,8 +13,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import get_settings
-from app.knowledge.graph import answer_public, public_excerpts
-from app.knowledge.intent import wants_jobs, wants_policy
+from app.knowledge.graph import answer_public, public_excerpts, visitor_answer
+from app.knowledge.intent import job_part, names_job, wants_knowledge, wants_policy
+from app.knowledge.store import is_follow_up, topic_terms
 from app.core.llm import LLMError, parse_json_content
 from app.db import admin_session, public_session
 from app.models import Job
@@ -23,6 +24,9 @@ from app.push import send_application_push
 from app.careers_apply import limited as apply_limited
 from app.careers_apply import submit_application
 from app.public.refusal import REFUSAL_TEXT, is_refusal
+from app.public.resume_check import MAX_BYTES as MAX_RESUME_BYTES
+from app.public.resume_check import CheckError, check_resume
+from app.public.resume_check import limited as check_limited
 from app.public.search import drop_unknown_codes, search_jobs
 
 router = APIRouter(prefix="/public", tags=["public"])
@@ -154,6 +158,29 @@ def job_detail(requisition_code: str):
         db.close()
 
 
+@router.post("/apply/check")
+async def apply_check(request: Request, requisition_code: str = Form(""), file: UploadFile | None = File(default=None)):
+    """Which of the job's requirements the résumé shows. The file is read in memory and not kept."""
+    if check_limited(_client_ip(request)):
+        return JSONResponse({"message": "Too many résumé checks from this network. Please try again later."}, status_code=429)
+    payload = await file.read(MAX_RESUME_BYTES + 1) if file is not None else b""
+    db = public_session()
+    try:
+        job = db.scalars(
+            select(Job).where(Job.requisition_code == requisition_code.strip(), Job.status == "open")
+        ).first()
+        if job is None:
+            return JSONResponse({"message": "That role is not open."}, status_code=404)
+        try:
+            return check_resume(job, file.filename if file is not None else "", payload)
+        except CheckError as exc:
+            return JSONResponse({"message": exc.message}, status_code=exc.status)
+    except SQLAlchemyError:
+        return JSONResponse({"message": "The résumé check is unavailable right now."}, status_code=503)
+    finally:
+        db.close()
+
+
 @router.post("/apply")
 async def apply(
     request: Request,
@@ -245,18 +272,14 @@ def chat(body: ChatIn, request: Request):
             {"message": "Too many questions from this network. Please try again later.", "limited": True, "jobs": []},
             status_code=429,
         )
-    if wants_policy(body.message) and not wants_jobs(body.message):
-        rag = answer_public(request.app.state.embedder, request.app.state.llm, body.message)
-        return {
-            "refusal": False,
-            "notice": None,
-            "answer": rag["answer"],
-            "explain_pending": False,
-            "jobs": [],
-            "closed_jobs": [],
-            "prior_codes": [],
-            "sources": rag["sources"],
-        }
+    context = _knowledge_context(body.history)
+    knowledge = wants_knowledge(body.message) or bool(
+        context and is_follow_up(body.message) and not names_job(body.message) and _continues_topic(request, body.message)
+    )
+    if knowledge and not names_job(body.message):
+        return _knowledge_reply(request, body, context)
+    if knowledge:
+        return _mixed_reply(request, body, context)
     db = public_session()
     try:
         try:
@@ -312,6 +335,107 @@ def chat(body: ChatIn, request: Request):
         }
     finally:
         db.close()
+
+
+def _knowledge_context(history: list[HistoryTurn]) -> str:
+    """The visitor's last document question, so "what about my spouse?" keeps the topic."""
+    for turn in reversed(history):
+        if turn.role == "user" and wants_knowledge(turn.content):
+            return turn.content.strip()[:500]
+    return ""
+
+
+def _continues_topic(request: Request, message: str) -> bool:
+    """A short follow-up stays on the document topic unless its own words name something no section has.
+
+    "And when does it start?" continues. "What about Python?" is a new job search.
+    """
+    if not topic_terms(message):
+        return True
+    return bool(public_excerpts(request.app.state.embedder, message))
+
+
+def _knowledge_payload(rag: dict, *, pending: bool) -> dict:
+    return {
+        "refusal": False,
+        "notice": None,
+        "answer": rag["answer"],
+        "explain_pending": pending,
+        "knowledge_pending": pending,
+        "overview": rag["overview"],
+        "jobs": [],
+        "closed_jobs": [],
+        "prior_codes": [],
+        "sources": rag["sources"],
+    }
+
+
+def _knowledge_reply(request: Request, body: ChatIn, context: str) -> dict:
+    rag = answer_public(
+        request.app.state.embedder,
+        request.app.state.llm,
+        body.message,
+        context=context,
+        history=_history_text(body.history),
+        use_model=body.explain,
+    )
+    return _knowledge_payload(rag, pending=not body.explain and bool(rag["sources"]))
+
+
+def _mixed_reply(request: Request, body: ChatIn, context: str):
+    """A role and a benefit in one question: job cards for the role, sections for the benefit."""
+    query = job_part(body.message)
+    rag = answer_public(
+        request.app.state.embedder,
+        request.app.state.llm,
+        body.message,
+        context=context,
+        history=_history_text(body.history),
+        roles=query or "a role",
+        use_model=body.explain,
+    )
+    payload = _knowledge_payload(rag, pending=not body.explain and bool(rag["sources"]))
+    if not query:
+        return payload
+    db = public_session()
+    try:
+        result = search_jobs(db, query, body.prior_codes, embedder=request.app.state.embedder)
+    except SQLAlchemyError:
+        payload["notice"] = "The job list is unavailable right now."
+        return payload
+    finally:
+        db.close()
+    cards = [_card(hit) for hit in result.hits]
+    payload["jobs"] = cards
+    payload["prior_codes"] = [card["requisition_code"] for card in cards][:24]
+    if not cards:
+        payload["jobs_note"] = f"No open role matched “{query}”."
+    return payload
+
+
+class KnowledgeIn(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+    history: list[HistoryTurn] = Field(default_factory=list, max_length=8)
+
+
+@router.post("/knowledge/answer")
+def knowledge_answer(body: KnowledgeIn, request: Request):
+    """The written answer for sections already shown. The quoted answer stays if the model fails a check."""
+    if is_refusal(body.message):
+        return {"answer": REFUSAL_TEXT, "notice": None}
+    if _limited(f"knowledge:{_client_ip(request)}"):
+        return JSONResponse({"answer": "", "notice": "Written answers are paused for this network. Please try again later."}, status_code=429)
+    query = job_part(body.message) if names_job(body.message) else ""
+    rag = answer_public(
+        request.app.state.embedder,
+        request.app.state.llm,
+        body.message,
+        context=_knowledge_context(body.history),
+        history=_history_text(body.history),
+        roles=query,
+        use_model=True,
+    )
+    return {"answer": rag["answer"], "notice": None}
 
 
 @router.post("/explain")
@@ -445,7 +569,8 @@ def _explain(request, result, message: str, history: str = "") -> str:
         "If the question excludes a city, name every city in the retrieved jobs and do not name the excluded city. "
         "If distance_miles is present, use that number and do not invent a different distance. "
         "Do not invent job ids, skills, salary, sponsorship, or candidate information. "
-        "Do not mention clearance unless the visitor asked about it."
+        "Do not mention clearance unless the visitor asked about it. "
+        "Do not mention a language model, an AI, or your own name."
     )
     cities = sorted({hit.job.location for hit in result.hits if hit.job.location})
     earlier = f"Earlier conversation:\n{history}\n" if history else ""
@@ -464,7 +589,7 @@ def _explain(request, result, message: str, history: str = "") -> str:
     if knowledge:
         user = f"{user}\n\n{knowledge}"
     raw = request.app.state.llm.complete(system=system, user=user, temperature=0.2, json_mode=False)
-    text = (raw or "").strip()
+    text = visitor_answer(raw or "")
     if text.startswith("{"):
         try:
             text = parse_json_content(text).get("answer", text)

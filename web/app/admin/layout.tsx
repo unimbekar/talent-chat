@@ -3,7 +3,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { BarChart3, BookOpen, Briefcase, ClipboardCheck, FolderInput, KeyRound, LayoutDashboard, LogOut, Route, Search, Settings, Target, Users } from "lucide-react";
+import { BarChart3, BookOpen, Briefcase, ClipboardCheck, FolderInput, Gift, KeyRound, LayoutDashboard, LogOut, Route, Search, Settings, Target, Users } from "lucide-react";
 
 import { AssistantPanel, type PanelMode } from "@/components/assistant/assistant-panel";
 import { BrandMark, useBrand } from "@/components/brand";
@@ -24,6 +24,7 @@ const NAV = [
   { href: "/admin/review", label: "Review", icon: ClipboardCheck },
   { href: "/admin/ingest", label: "Ingest", icon: FolderInput },
   { href: "/admin/knowledge", label: "Knowledge", icon: BookOpen },
+  { href: "/admin/benefits", label: "Benefits", icon: Gift },
   { href: "/admin/settings", label: "Settings", icon: Settings },
   { href: "/admin/password", label: "Password", icon: KeyRound },
 ];

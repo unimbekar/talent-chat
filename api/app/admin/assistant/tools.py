@@ -743,6 +743,52 @@ def report(ctx: ToolContext, args: dict) -> ToolResult:
     )
 
 
+def company_documents(ctx: ToolContext, args: dict) -> ToolResult:
+    """Search the knowledge base, both the careers documents and the internal ones."""
+    from app.knowledge.graph import blocks, readable
+    from app.knowledge.store import search_passages
+
+    question = _str(args, "question")
+    if not question:
+        raise ToolError("Say what to look up in the company documents.")
+    if ctx.embedder is None:
+        raise ToolError("Document search is not available right now.")
+    found: list[dict] = []
+    for audience in ("public", "internal"):
+        for passage in search_passages(ctx.session, ctx.embedder, question, audience=audience, limit=4):
+            found.append({**passage, "audience": audience})
+    found.sort(key=lambda item: item["score"], reverse=True)
+    found = found[:6] if not any(item.get("overview") for item in found) else found
+    data = {
+        "question": question,
+        "sections": [
+            {
+                "document": item["title"],
+                "section": item.get("section"),
+                "audience": "careers site" if item["audience"] == "public" else "internal",
+                "text": "\n".join(readable(item["lines"]))[:1500],
+            }
+            for item in found
+        ],
+    }
+    if not found:
+        data["note"] = "No document on file answers this."
+    rows = [
+        {
+            "document": item["title"],
+            "section": item.get("section"),
+            "audience": item["audience"],
+            "blocks": blocks(item["lines"]),
+        }
+        for item in found
+    ]
+    return ToolResult(
+        data=data,
+        summary=f"Documents · {len(found)} section{'' if len(found) == 1 else 's'}",
+        block={"type": "documents", "title": f"Company documents · {question[:60]}", "rows": rows},
+    )
+
+
 _STRINGS = {"type": "array", "items": {"type": "string"}}
 
 TOOLS: list[Tool] = [
@@ -879,6 +925,19 @@ TOOLS: list[Tool] = [
         },
         report,
         "Building report",
+    ),
+    Tool(
+        "company_documents",
+        "Search the company knowledge base: benefits, policies, procedures, and other uploaded documents, "
+        "both the ones shown to careers visitors and the internal ones. Use for 'what is the 401k match', "
+        "'health benefits', 'how do timesheets work'.",
+        {
+            "type": "object",
+            "properties": {"question": {"type": "string", "description": "The recruiter's question in their words."}},
+            "required": ["question"],
+        },
+        company_documents,
+        "Reading documents",
     ),
 ]
 

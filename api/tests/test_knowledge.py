@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from app.db import public_session
-from app.knowledge.graph import build_rag_graph
+from app.knowledge.graph import build_rag_graph, visitor_answer
 from app.knowledge.intent import wants_jobs, wants_policy
 from app.main import create_app
 from tests.fakes import RecordingEmbedder, RecordingLLM
@@ -137,3 +137,40 @@ def test_a_procedure_document_answers_without_being_a_handbook(db):
     skills = client.post("/public/chat", json={"message": "Java and AWS", "prior_codes": []})
     assert "Friday" not in (skills.json().get("answer") or "")
     assert skills.json().get("sources") in (None, [])
+
+
+def test_visitor_answers_hide_the_model_name():
+    assert "qwen" not in visitor_answer("The match is 10 percent. Answered by qwen3.6:latest.").lower()
+    assert "10 percent" in visitor_answer("The match is 10 percent. Answered by qwen3.6:latest.")
+
+
+def test_a_benefits_question_uses_the_section_it_names(db):
+    client, _llm, _embedder = _client()
+    _login(client)
+    health = "Medical, dental, and vision insurance.\n" + ("The employee health premium is company paid.\n" * 30)
+    body = (
+        health
+        + "Janus Soft pays 100 percent of the employee premium for health insurance.\n"
+        + "Spouse and children are 50 percent employee and 50 percent employer.\n"
+        + "Coverage starts the first of the next month.\n"
+        + "Retirement.\n"
+        + "The company matches 10 percent of the employee contribution to the 401k.\n"
+        + "The company pays dollar for dollar up to 10 percent.\n"
+        + "Protection.\n"
+        + "Life insurance and short-term disability are paid by the company.\n"
+    )
+    created = client.post("/admin/knowledge", data={"title": "Company Benefits", "audience": "public", "text": body})
+    assert created.status_code == 200
+
+    insurance = client.post(
+        "/public/chat",
+        json={"message": "summarise company benefits for Health Insurance", "prior_codes": []},
+    )
+    insurance_text = " ".join(item["excerpt"] for item in insurance.json()["sources"])
+    assert "100 percent" in insurance_text
+    assert "disability" not in insurance_text.lower()
+
+    match = client.post("/public/chat", json={"message": "what is company 401K match", "prior_codes": []})
+    match_text = " ".join(item["excerpt"] for item in match.json()["sources"]).lower()
+    assert "10 percent" in match_text
+    assert "401k" in match_text

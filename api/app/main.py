@@ -10,6 +10,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.admin.assistant.routes import router as assistant_router
+from app.admin.benefits_routes import public_router as public_benefits_router
+from app.admin.benefits_routes import router as benefits_router
 from app.admin.pipeline import router as pipeline_router
 from app.admin.push_routes import router as push_router
 from app.admin.reports import router as reports_router
@@ -82,6 +84,22 @@ def _warm_resume_cache() -> None:
         session.close()
 
 
+def _rechunk_knowledge(embedder) -> None:
+    """Documents saved before sections existed are split again by heading."""
+    from app.knowledge.store import rechunk_stale
+
+    session = admin_session()
+    try:
+        count = rechunk_stale(session, embedder)
+        if count:
+            logger.info("knowledge base: split %s document(s) into sections", count)
+    except Exception:
+        logger.exception("knowledge base re-split failed")
+        session.rollback()
+    finally:
+        session.close()
+
+
 async def _crawl_loop() -> None:
     settings = get_settings()
     while True:
@@ -126,6 +144,7 @@ async def lifespan(app: FastAPI):
         )
     app.state.running_assistant_model = assistant_model or chat_model
     app.state.embedder = FastEmbedder(settings.embedding_model)
+    threading.Thread(target=_rechunk_knowledge, args=(app.state.embedder,), name="knowledge-sections", daemon=True).start()
     if settings.warm_resume_cache:
         threading.Thread(target=_warm_resume_cache, name="warm-resume-cache", daemon=True).start()
     task = None
@@ -146,6 +165,8 @@ def create_app() -> FastAPI:
     app.include_router(reports_router)
     app.include_router(assistant_router)
     app.include_router(knowledge_router)
+    app.include_router(benefits_router)
+    app.include_router(public_benefits_router)
 
     @app.middleware("http")
     async def request_id(request: Request, call_next):

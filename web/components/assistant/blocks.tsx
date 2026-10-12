@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Check, Copy, Download, ExternalLink, X } from "lucide-react";
 
 import { copyText } from "@/components/candidate-mail";
+import { SectionBody } from "@/components/knowledge/section-view";
 import { StageBadge } from "@/components/stage-badge";
 import { downloadCsv } from "@/lib/csv";
 import type { Block, CandidateRow, JobRow, RankedRow, SubmissionRow } from "@/lib/assistant";
@@ -473,8 +474,52 @@ function SubmissionBlock({ block }: { block: Extract<Block, { type: "submission"
   );
 }
 
+function DocumentsBlock({ block }: { block: Extract<Block, { type: "documents" }> }) {
+  if (!block.rows.length) {
+    return (
+      <Shell title={block.title}>
+        <p className="px-3 py-2.5 text-xs text-ink/60">No document on file answers this.</p>
+      </Shell>
+    );
+  }
+  return (
+    <Shell
+      title={block.title}
+      total={block.rows.length}
+      actions={
+        <Link href="/admin/knowledge" className="text-[11px] font-medium text-pine hover:underline">
+          Documents
+        </Link>
+      }
+    >
+      <div className="divide-y divide-line">
+        {block.rows.map((row, index) => (
+          <details key={index} open={index === 0} className="group px-3 py-2.5">
+            <summary className="flex cursor-pointer list-none items-center gap-2 text-xs">
+              <span className="min-w-0 flex-1 truncate font-semibold text-ink/85">{row.section || row.document}</span>
+              {row.section && <span className="truncate text-ink/45">{row.document}</span>}
+              <span
+                className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                  row.audience === "public" ? "bg-pine/10 text-pine" : "bg-ink/5 text-ink/60"
+                }`}
+              >
+                {row.audience === "public" ? "Careers site" : "Internal"}
+              </span>
+            </summary>
+            <div className="mt-2 text-ink/80">
+              <SectionBody blocks={row.blocks} />
+            </div>
+          </details>
+        ))}
+      </div>
+    </Shell>
+  );
+}
+
 export function ResultBlock({ block }: { block: Block }) {
   switch (block.type) {
+    case "documents":
+      return <DocumentsBlock block={block} />;
     case "candidates":
       return <CandidatesBlock block={block} />;
     case "ranked":

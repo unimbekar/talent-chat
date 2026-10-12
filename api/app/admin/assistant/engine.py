@@ -34,6 +34,7 @@ from app.admin.assistant.tools import TOOL_BY_NAME, TOOLS, ToolContext, ToolErro
 from app.admin.find import rule_filters
 from app.config import get_settings
 from app.core.llm import LLMError
+from app.knowledge.intent import names_job, wants_knowledge
 from app.models import AuditLog, Candidate, Job, Submission
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,7 @@ Today is {today} ({weekday}). The recruiter's timezone is {tz}.
 {page}
 How to work:
 - Any question about jobs, candidates, submissions, counts, salaries, or dates needs a tool call first. Never answer those from memory.
+- Questions about company benefits, policies, procedures, or other uploaded documents use company_documents. Quote its figures exactly.
 - Call several tools at once when the question has several parts.
 - Put only what the recruiter said into filters. Do not add related skills, nearby states, or roles they did not name.
 - "This job", "this candidate", and "this submission" mean the ones on the page described above.
@@ -263,6 +265,8 @@ def _fallback(ctx: ToolContext, question: str, page_codes: set[str], reason: str
         calls.append(("job_details", {"code": code}))
         if re.search(r"(?i)\b(fit|match|candidate|who|people|best)", question):
             calls.append(("job_candidates", {"code": code}))
+    elif wants_knowledge(question) and not names_job(question):
+        calls.append(("company_documents", {"question": question}))
     else:
         filters = rule_filters(question)
         if not filters.empty():

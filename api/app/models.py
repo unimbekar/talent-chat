@@ -331,6 +331,7 @@ class KnowledgeDocument(Base):
     body: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    chunk_version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     chunks: Mapped[list["KnowledgeChunk"]] = relationship(
         back_populates="document", cascade="all, delete-orphan", order_by="KnowledgeChunk.ord"
     )
@@ -343,6 +344,8 @@ class KnowledgeChunk(Base):
     document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("knowledge_documents.id", ondelete="CASCADE"), index=True)
     ord: Mapped[int] = mapped_column(Integer)
     text: Mapped[str] = mapped_column(Text)
+    heading: Mapped[str | None] = mapped_column(Text)
+    kicker: Mapped[str | None] = mapped_column(Text)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(768))
     document: Mapped[KnowledgeDocument] = relationship(back_populates="chunks")
 

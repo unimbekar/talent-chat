@@ -160,9 +160,132 @@ body {
   color: #e7eef8;
 }
 .careers {
+  --c-fg: 231 238 248;
+  --c-accent: 156 226 255;
+  --c-line: 186 214 236;
+  --c-line-a: 0.13;
+  --c-field-line: 186 214 236 / 0.24;
+  --c-field-bg: rgb(255 255 255 / 0.05);
+  --c-surface: rgb(255 255 255 / 0.035);
+  --c-surface-strong: rgb(255 255 255 / 0.06);
+  --c-shadow: none;
+  --c-ok: 110 231 183;
+  --c-miss: 252 165 165;
+  --c-warn: 252 211 77;
   background: #06080d;
   color: #e7eef8;
   isolation: isolate;
+}
+
+/* Theme-aware pieces of the careers desk. The light values are set further down. */
+.desk-text {
+  color: rgb(var(--c-fg));
+}
+.desk-muted {
+  color: rgb(var(--c-fg) / 0.74);
+}
+.desk-faint {
+  color: rgb(var(--c-fg) / 0.52);
+}
+.desk-accent {
+  color: rgb(var(--c-accent));
+}
+.desk-line {
+  border-color: rgb(var(--c-line) / var(--c-line-a));
+}
+.desk-surface {
+  border: 1px solid rgb(var(--c-line) / var(--c-line-a));
+  background: var(--c-surface);
+  box-shadow: var(--c-shadow);
+}
+.desk-surface-strong {
+  border: 1px solid rgb(var(--c-line) / var(--c-line-a));
+  background: var(--c-surface-strong);
+  box-shadow: var(--c-shadow);
+}
+.desk-field {
+  border: 1px solid rgb(var(--c-field-line));
+  background: var(--c-field-bg);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.desk-field:focus-within {
+  border-color: rgb(var(--c-accent) / 0.7);
+  box-shadow: 0 0 0 3px rgb(var(--c-accent) / 0.16);
+}
+.desk-field textarea,
+.desk-field input {
+  color: rgb(var(--c-fg));
+}
+.desk-field textarea::placeholder,
+.desk-field input::placeholder {
+  color: rgb(var(--c-fg) / 0.45);
+}
+.desk-bubble {
+  border: 1px solid rgb(var(--c-accent) / 0.28);
+  background: rgb(var(--c-accent) / 0.12);
+  color: rgb(var(--c-fg));
+}
+.desk-hover:hover {
+  background: rgb(var(--c-fg) / 0.06);
+}
+.desk-ok {
+  color: rgb(var(--c-ok));
+}
+.desk-miss {
+  color: rgb(var(--c-miss));
+}
+.desk-warn {
+  color: rgb(var(--c-warn));
+}
+.desk-pill-ok {
+  border: 1px solid rgb(var(--c-ok) / 0.35);
+  background: rgb(var(--c-ok) / 0.12);
+  color: rgb(var(--c-ok));
+}
+.desk-pill-miss {
+  border: 1px solid rgb(var(--c-miss) / 0.35);
+  background: rgb(var(--c-miss) / 0.1);
+  color: rgb(var(--c-miss));
+}
+.desk-shimmer {
+  background: linear-gradient(90deg, rgb(var(--c-fg) / 0.06), rgb(var(--c-fg) / 0.16), rgb(var(--c-fg) / 0.06));
+  background-size: 200% 100%;
+  animation: desk-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes desk-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+/* Section tables from the knowledge base. currentColor keeps them readable in either theme and on the admin desk. */
+.kb-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.kb-table th {
+  text-align: left;
+  font-weight: 600;
+  padding: 6px 8px;
+  opacity: 0.7;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+}
+.kb-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+  vertical-align: top;
+}
+.kb-table tr:last-child td {
+  border-bottom: 0;
+}
+.kb-table td:first-child {
+  font-weight: 500;
 }
 
 .careers-atmosphere {
@@ -306,6 +429,10 @@ body {
   color: rgb(156 226 255 / 0.7);
 }
 
+.careers-code {
+  color: rgb(156 226 255 / 0.92);
+}
+
 .careers-quiet {
   border-color: rgb(186 214 236 / 0.18) !important;
   background: transparent !important;
@@ -391,6 +518,62 @@ html[data-theme="light"] .careers {
 
 html[data-theme="light"] .careers [class*="text-white"]:not([class*="bg-ink"]),
 html[data-theme="light"] .admin [class*="text-white"]:not([class*="bg-ink"]) {
+  color: #152433;
+}
+
+html[data-theme="light"] .careers {
+  --c-fg: 21 36 51;
+  --c-accent: 11 95 130;
+  --c-line: 21 36 51;
+  --c-line-a: 0.12;
+  --c-field-line: 21 36 51 / 0.3;
+  --c-field-bg: #ffffff;
+  --c-surface: #ffffff;
+  --c-surface-strong: #ffffff;
+  --c-shadow: 0 1px 2px rgb(21 36 51 / 0.06), 0 8px 24px -18px rgb(21 36 51 / 0.35);
+  --c-ok: 4 120 87;
+  --c-miss: 185 28 28;
+  --c-warn: 146 64 14;
+}
+
+/* Translucent white utilities used across the careers dialogs, mapped to ink for the light theme. */
+html[data-theme="light"] .careers .border-white\/10:not([class*="bg-ink"]),
+html[data-theme="light"] .careers .border-white\/5:not([class*="bg-ink"]) {
+  border-color: rgb(21 36 51 / 0.12);
+}
+html[data-theme="light"] .careers .bg-white\/10:not([class*="bg-ink"]) {
+  background-color: rgb(21 36 51 / 0.08);
+}
+html[data-theme="light"] .careers .bg-white\/\[0\.03\]:not([class*="bg-ink"]),
+html[data-theme="light"] .careers .bg-white\/\[0\.04\]:not([class*="bg-ink"]) {
+  background-color: rgb(21 36 51 / 0.03);
+}
+html[data-theme="light"] .careers .hover\:bg-white\/10:hover:not([class*="bg-ink"]) {
+  background-color: rgb(21 36 51 / 0.06);
+}
+html[data-theme="light"] .careers .text-white\/35:not([class*="bg-ink"]),
+html[data-theme="light"] .careers .text-white\/45:not([class*="bg-ink"]),
+html[data-theme="light"] .careers .text-white\/50:not([class*="bg-ink"]) {
+  color: rgb(21 36 51 / 0.58);
+}
+html[data-theme="light"] .careers .text-white\/55:not([class*="bg-ink"]),
+html[data-theme="light"] .careers .text-white\/60:not([class*="bg-ink"]),
+html[data-theme="light"] .careers .text-white\/70:not([class*="bg-ink"]) {
+  color: rgb(21 36 51 / 0.72);
+}
+html[data-theme="light"] .careers .text-white\/75:not([class*="bg-ink"]),
+html[data-theme="light"] .careers .text-white\/80:not([class*="bg-ink"]) {
+  color: rgb(21 36 51 / 0.86);
+}
+html[data-theme="light"] .careers .text-red-100,
+html[data-theme="light"] .careers .text-red-200 {
+  color: #991b1b;
+}
+html[data-theme="light"] .careers .text-amber-100 {
+  color: #78350f;
+}
+html[data-theme="light"] .careers .file\:bg-white\/10::file-selector-button {
+  background-color: rgb(21 36 51 / 0.08);
   color: #152433;
 }
 
@@ -481,6 +664,17 @@ html[data-theme="light"] .careers-card {
   box-shadow: 0 10px 30px -22px rgb(21 36 51 / 0.45);
 }
 
+html[data-theme="light"] .careers-code,
+html[data-theme="light"] .careers-kicker,
+html[data-theme="light"] .careers-index {
+  color: #0b5f82;
+}
+
+html[data-theme="light"] .careers-pulse {
+  background: #0b5f82;
+  box-shadow: none;
+}
+
 html[data-theme="light"] .careers-quiet {
   color: #152433 !important;
 }
@@ -503,7 +697,8 @@ html[data-theme="light"] .careers-glow {
 @media (prefers-reduced-motion: reduce) {
   .careers-glow-a,
   .careers-glow-b,
-  .careers-pulse {
+  .careers-pulse,
+  .desk-shimmer {
     animation: none;
   }
 

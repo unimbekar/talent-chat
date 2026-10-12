@@ -1,5 +1,7 @@
 // Recruiter assistant: message types, page context, suggestions, and the event stream.
 
+import type { KbBlock } from "@/components/knowledge/section-view";
+
 export type Step = {
   id: string;
   tool: string;
@@ -65,7 +67,12 @@ export type Block =
   | { type: "profile"; candidate: Record<string, any> }
   | { type: "job"; job: Record<string, any> }
   | { type: "fit"; fit: Record<string, any> }
-  | { type: "submission"; submission: Record<string, any> };
+  | { type: "submission"; submission: Record<string, any> }
+  | {
+      type: "documents";
+      title: string;
+      rows: { document: string; section: string | null; audience: "public" | "internal"; blocks: KbBlock[] }[];
+    };
 
 export type UserMessage = { role: "user"; content: string };
 

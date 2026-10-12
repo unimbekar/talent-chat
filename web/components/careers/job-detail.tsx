@@ -110,7 +110,7 @@ export function JobDetailDialog({
               {posting?.title || "Loading…"}
             </h2>
             <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-white/55">
-              <span className="font-mono text-xs text-[#9ce2ff]/80">{code}</span>
+              <span className="careers-code font-mono text-xs">{code}</span>
               {posting?.location && (
                 <span className="inline-flex items-center gap-1">
                   <MapPin className="size-3.5" /> {posting.location}

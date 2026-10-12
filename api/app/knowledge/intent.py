@@ -5,13 +5,19 @@ import re
 # Company documents: benefits, policies, and any other uploaded material.
 _KNOWLEDGE = re.compile(
     r"(?i)\b("
-    r"benefits?|handbook|polic(?:y|ies)|pto|vacation|401\s*\(?k\)?|retirement|"
-    r"insurance|health plan|holidays?|parental|tuition|sick leave|bonus|hsa|fsa|"
-    r"dress code|remote work|paternity|maternity|time off|paid leave|dental|vision|"
-    r"timesheets?|onboarding|expenses?|reimburs\w*|travel|badge|payroll|"
+    r"benefits?|perks?|handbook|polic(?:y|ies)|pto|vacation|401\s*\(?k\)?|retirement|"
+    r"insurance|health plan|health benefits?|holidays?|parental|tuition|sick leave|bonus(?:es)?|hsa|fsa|"
+    r"dress code|remote work|paternity|maternity|time off|paid leave|medical|dental|vision|"
+    r"premiums?|coverage|referrals?|disability|life insurance|reimburs\w*|allowance|stipend|"
+    r"timesheets?|onboarding|expenses?|travel|badge|payroll|"
     r"procedures?|processes?|guidelines?|training|orientation|paperwork|"
     r"documents?|workflow|standard operating"
     r")\b"
+)
+# Words that are also job-search terms. They count as a document question only when no job is named.
+_KNOWLEDGE_SOFT = re.compile(
+    r"(?i)\b(health|healthcare|wellness|gym|laptop|compensation|"
+    r"spouse|dependents?|family|stipends?|leave)\b"
 )
 _QUESTION = re.compile(
     r"(?i)\b(how do|how can|how does|what is|what are|when is|when do|where is|where do|"
@@ -28,6 +34,8 @@ def wants_knowledge(message: str) -> bool:
     text = message or ""
     if _KNOWLEDGE.search(text):
         return True
+    if _KNOWLEDGE_SOFT.search(text) and not _JOB.search(text):
+        return True
     return bool(_QUESTION.search(text) and not _JOB.search(text))
 
 
@@ -41,3 +49,24 @@ def wants_jobs(message: str) -> bool:
     if _JOB.search(message or ""):
         return True
     return not wants_knowledge(message)
+
+
+def names_job(message: str) -> bool:
+    return bool(_JOB.search(message or ""))
+
+
+_FILLER = re.compile(
+    r"(?i)\b(does|do|is|are|the|a|an|this|that|it|include|includes|including|offer|offers|come with|have|has|"
+    r"what|which|how|about|any|with|for|of|and|or|me|my|tell|show|give|please|there|"
+    r"they|them|their|you|your|we|our|i|can|get|good|great|best|nice|decent|generous|solid|"
+    r"company|janus|soft)\b"
+)
+
+
+def job_part(message: str) -> str:
+    """The part of a mixed question that names a job, with the benefit words removed."""
+    text = _KNOWLEDGE.sub(" ", message or "")
+    text = _KNOWLEDGE_SOFT.sub(" ", text)
+    text = _FILLER.sub(" ", text)
+    text = re.sub(r"[?!.,]", " ", text)
+    return " ".join(text.split())
