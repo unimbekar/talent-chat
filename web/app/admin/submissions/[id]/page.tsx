@@ -5,6 +5,9 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
 import { BackButton } from "@/components/back-button";
+import { BurdenCalculator } from "@/components/burden/burden-calculator";
+import { BurdenChip } from "@/components/burden/burden-chip";
+import type { BurdenInputs, SavedBurden } from "@/lib/burden";
 import { CommentThread } from "@/components/comment-thread";
 import { StageBadge } from "@/components/stage-badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +22,18 @@ import {
   type StageInfo,
   type SubmissionDetail,
 } from "@/lib/pipeline";
+
+function summaryOf(saved: SavedBurden) {
+  if (!saved.saved || !saved.result) return null;
+  const billing = saved.result.billing;
+  return {
+    bill_rate: billing.bill_rate,
+    cost_hourly: saved.result.cost.hourly,
+    profit_hourly: billing.profit_hourly,
+    margin_pct: billing.margin_pct,
+    status: billing.status,
+  };
+}
 
 export default function SubmissionPage() {
   const params = useParams<{ id: string }>();
@@ -139,6 +154,23 @@ export default function SubmissionPage() {
     load();
   }
 
+  async function burden(method: "PUT" | "DELETE", inputs?: BurdenInputs): Promise<SavedBurden> {
+    const response = await fetch(`/api/admin/submissions/${id}/burden`, {
+      method,
+      headers: inputs ? { "Content-Type": "application/json" } : undefined,
+      body: inputs ? JSON.stringify(inputs) : undefined,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (response.status === 401) {
+      router.push("/admin/login");
+      throw new Error("Sign in required.");
+    }
+    if (!response.ok) throw new Error(errorMessage(data, "The calculation was not saved."));
+    const saved = data as SavedBurden;
+    setRow((current) => (current ? { ...current, burden: saved, burden_summary: summaryOf(saved) } : current));
+    return saved;
+  }
+
   async function remove() {
     setBusy("delete");
     const response = await fetch(`/api/admin/submissions/${id}`, { method: "DELETE" });
@@ -182,7 +214,14 @@ export default function SubmissionPage() {
               {row.job.location || "No city"} · submitted {whenExact(row.created_at)}
             </p>
           </div>
-          <StageBadge stage={row.stage} label={row.stage_label} />
+          <div className="flex flex-wrap items-center gap-2">
+            {row.burden_summary && (
+              <a href="#burden" className="transition hover:opacity-80">
+                <BurdenChip summary={row.burden_summary} />
+              </a>
+            )}
+            <StageBadge stage={row.stage} label={row.stage_label} />
+          </div>
         </div>
       </div>
 
@@ -278,6 +317,28 @@ export default function SubmissionPage() {
           {busy === "salary" ? "Saving…" : "Save salary"}
         </Button>
       </form>
+
+      {row.burden && (
+        <section id="burden" className="scroll-mt-4">
+          <h2 className="font-serif text-2xl">Burden and profit</h2>
+          <p className="page-lead">
+            What {personName(row.candidate)} costs the company for {row.job.requisition_code}, and the profit or loss at the candidate hourly rate.
+            {!row.burden.saved && row.burden.inputs.salary ? ` Started from the ${row.salary_usd ? "salary on file" : "salary they asked for"}.` : ""}
+          </p>
+          <div className="mt-4">
+            <BurdenCalculator
+              key={`burden-${row.salary_usd ?? "none"}`}
+              initial={row.burden.inputs}
+              initialResult={row.burden.result}
+              saved={row.burden.saved}
+              savedAt={row.burden.saved_at}
+              subject={`${personName(row.candidate)} · ${row.job.requisition_code} ${row.job.title || ""}`.trim()}
+              onSave={(inputs) => burden("PUT", inputs)}
+              onClear={() => burden("DELETE")}
+            />
+          </div>
+        </section>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <CommentThread

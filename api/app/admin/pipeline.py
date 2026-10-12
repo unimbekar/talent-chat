@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.admin import burden as burden_calc
 from app.admin.auth import cookie_name, read_session
 from app.db import get_admin_db
 from app.models import (
@@ -199,7 +200,47 @@ def _card(row: Submission, comment_count: int | None = None) -> dict:
         "comment_count": count,
         "candidate": _candidate_brief(row.candidate),
         "job": _job_brief(row.job),
+        "burden_summary": _burden_summary(row),
     }
+
+
+def _saved_burden(row: Submission) -> burden_calc.BurdenIn | None:
+    saved = (row.burden or {}).get("inputs")
+    if not saved:
+        return None
+    try:
+        return burden_calc.parse_inputs(saved)
+    except burden_calc.BurdenInputError:
+        return None
+
+
+def _burden_summary(row: Submission) -> dict | None:
+    inputs = _saved_burden(row)
+    return burden_calc.summary(inputs) if inputs else None
+
+
+def _suggested_burden(row: Submission) -> dict:
+    """Calculator inputs for a submission with nothing saved: the salary on file, or the one the candidate asked for."""
+    inputs = burden_calc.defaults()["inputs"]
+    salary = row.salary_usd or (row.application.salary_usd if row.application else None)
+    inputs["salary"] = salary
+    return inputs
+
+
+def _burden_out(row: Submission) -> dict:
+    saved = _saved_burden(row)
+    if saved is not None:
+        return {
+            "saved": True,
+            "saved_at": (row.burden or {}).get("saved_at"),
+            "inputs": saved.model_dump(),
+            "result": burden_calc.calculate(saved),
+        }
+    inputs = _suggested_burden(row)
+    result = None
+    if inputs.get("salary"):
+        result = burden_calc.calculate(burden_calc.parse_inputs(inputs))
+    return {"saved": False, "saved_at": None, "inputs": inputs, "result": result}
 
 
 def _application_out(row: Submission) -> dict | None:
@@ -227,6 +268,7 @@ def _detail(row: Submission) -> dict:
     payload["events"] = [_event_out(event) for event in row.events]
     payload["comments"] = [_comment_out(comment) for comment in reversed(list(row.comments))]
     payload["application"] = _application_out(row)
+    payload["burden"] = _burden_out(row)
     payload["flow"] = FLOW
     payload["exits"] = EXITS
     return payload
@@ -534,6 +576,46 @@ def patch_submission(submission_id: uuid.UUID, body: SubmissionPatch, session: S
 def remove_submission(submission_id: uuid.UUID, session: Session = Depends(require_admin)):
     delete_submission(session, submission_id)
     return {"ok": True}
+
+
+def _burden_inputs(data: dict) -> burden_calc.BurdenIn:
+    try:
+        return burden_calc.parse_inputs(data)
+    except burden_calc.BurdenInputError as error:
+        _fail(400, str(error))
+
+
+@router.get("/burden/defaults")
+def burden_defaults(session: Session = Depends(require_admin)):
+    return burden_calc.defaults()
+
+
+@router.post("/burden")
+def burden_calculate(data: dict, session: Session = Depends(require_admin)):
+    inputs = _burden_inputs(data)
+    return {"inputs": inputs.model_dump(), "result": burden_calc.calculate(inputs)}
+
+
+@router.put("/submissions/{submission_id}/burden")
+def save_submission_burden(submission_id: uuid.UUID, data: dict, session: Session = Depends(require_admin)):
+    row = _load(session, submission_id)
+    inputs = _burden_inputs(data)
+    row.burden = {"inputs": inputs.model_dump(), "saved_at": _now().isoformat()}
+    rate = inputs.bill_rate
+    _audit(session, "submission_burden", row.id, None if rate is None else f"{rate:g}/hr")
+    session.commit()
+    session.refresh(row)
+    return _burden_out(row)
+
+
+@router.delete("/submissions/{submission_id}/burden")
+def clear_submission_burden(submission_id: uuid.UUID, session: Session = Depends(require_admin)):
+    row = _load(session, submission_id)
+    row.burden = None
+    _audit(session, "submission_burden", row.id, "cleared")
+    session.commit()
+    session.refresh(row)
+    return _burden_out(row)
 
 
 @router.get("/jobs/{code}/submissions")

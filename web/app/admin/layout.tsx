@@ -3,7 +3,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { BarChart3, BookOpen, Briefcase, ClipboardCheck, FolderInput, Gift, KeyRound, LayoutDashboard, LogOut, Route, Search, Settings, Target, Users } from "lucide-react";
+import { BarChart3, BookOpen, Briefcase, Calculator, ClipboardCheck, FolderInput, Gift, KeyRound, LayoutDashboard, LogOut, Route, Search, Settings, Target, Users } from "lucide-react";
 
 import { AssistantPanel, type PanelMode } from "@/components/assistant/assistant-panel";
 import { BrandMark, useBrand } from "@/components/brand";
@@ -18,6 +18,7 @@ const NAV = [
   { href: "/admin/jobs", label: "Jobs", icon: Briefcase },
   { href: "/admin/candidates", label: "Candidates", icon: Users },
   { href: "/admin/pipeline", label: "Pipeline", icon: Route },
+  { href: "/admin/burden", label: "Burden", icon: Calculator },
   { href: "/admin/reports", label: "Reports", icon: BarChart3 },
   { href: "/admin/find", label: "Find", icon: Search },
   { href: "/admin/match", label: "Match", icon: Target },

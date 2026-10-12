@@ -156,6 +156,8 @@ class Submission(Base):
     stage: Mapped[str] = mapped_column(Text, default="submitted", index=True)
     salary_usd: Mapped[int | None] = mapped_column(Integer)
     salary_note: Mapped[str | None] = mapped_column(Text)
+    # Saved burden calculator inputs: {"inputs": {...}, "saved_at": iso}.
+    burden: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     candidate: Mapped[Candidate] = relationship()

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { BurdenChip } from "@/components/burden/burden-chip";
 import { SubmissionForm } from "@/components/submission-form";
 import { StageBadge } from "@/components/stage-badge";
 import { Button } from "@/components/ui/button";
@@ -148,7 +149,8 @@ export default function PipelinePage() {
                     {row.comment_count ? ` · ${row.comment_count} ${row.comment_count === 1 ? "comment" : "comments"}` : ""}
                   </span>
                 </span>
-                <span className="flex items-center gap-3">
+                <span className="flex flex-wrap items-center justify-end gap-3">
+                  {row.burden_summary && <BurdenChip summary={row.burden_summary} />}
                   <span className="text-sm text-ink/70">{money(row.salary_usd)}</span>
                   <StageBadge stage={row.stage} label={row.stage_label} />
                 </span>

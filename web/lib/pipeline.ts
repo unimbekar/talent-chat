@@ -1,3 +1,5 @@
+import type { BurdenSummary, SavedBurden } from "@/lib/burden";
+
 export type StageInfo = {
   key: string;
   label: string;
@@ -33,6 +35,7 @@ export type SubmissionCard = {
   comment_count: number;
   candidate: PersonBrief;
   job: JobBrief;
+  burden_summary?: BurdenSummary | null;
 };
 
 export type SubmissionEvent = {
@@ -72,6 +75,7 @@ export type SubmissionDetail = SubmissionCard & {
   events: SubmissionEvent[];
   comments: Note[];
   application?: SiteApplication | null;
+  burden?: SavedBurden;
   flow: string[];
   exits: string[];
 };
