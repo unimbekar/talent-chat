@@ -1,8 +1,9 @@
-"""Count careers-site visits without storing anything that identifies a person.
+"""Count careers-site visits.
 
 The browser keeps a random visitor id in local storage and sends one beacon per page,
-posting, or apply view. No IP address, user agent, or full referrer URL is stored:
-only the visitor id, what was viewed, a short traffic source, and the device type.
+posting, or apply view. Each browser also keeps the IP it connected from and, for a
+public address, the city that address belongs to. Names, emails, and the full user
+agent are not stored.
 """
 
 from collections import defaultdict
@@ -21,7 +22,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.config import get_settings
 from app.core.client_ip import client_ip
 from app.db import admin_session
-from app.models import Job, SiteVisit
+from app.models import Job, SiteVisit, SiteVisitor
+from app.public.geo import place_of
 
 router = APIRouter(prefix="/public", tags=["public"])
 logger = logging.getLogger("talent")
@@ -136,7 +138,23 @@ def _own_hosts(request: Request) -> set[str]:
     return hosts
 
 
-def record_visit(body: VisitIn, *, user_agent: str | None, own_hosts: set[str]) -> bool:
+def remember_visitor(session, visitor: uuid.UUID, ip: str) -> None:
+    """Keep one address per browser. A new address, or a missing city, is looked up again."""
+    row = session.get(SiteVisitor, visitor)
+    now = datetime.now(timezone.utc)
+    address = (ip or "unknown")[:80]
+    if row is None:
+        city, region, country = place_of(address)
+        session.add(SiteVisitor(visitor=visitor, ip=address, city=city, region=region, country=country, first_at=now, last_at=now))
+        return
+    row.last_at = now
+    if row.ip != address or (row.city is None and row.country is None):
+        city, region, country = place_of(address)
+        row.ip = address
+        row.city, row.region, row.country = city, region, country
+
+
+def record_visit(body: VisitIn, *, user_agent: str | None, own_hosts: set[str], ip: str) -> bool:
     """Save one view. False when it was dropped: a bot, a path that is not ours, or an unknown job."""
     if is_bot(user_agent):
         return False
@@ -168,6 +186,7 @@ def record_visit(body: VisitIn, *, user_agent: str | None, own_hosts: set[str]) 
                 device=device_of(user_agent),
             )
         )
+        remember_visitor(session, body.visitor, ip)
         session.commit()
         return True
     finally:
@@ -180,7 +199,12 @@ def visit(body: VisitIn, request: Request):
     if _limited(client_ip(request, get_settings())):
         return Response(status_code=204)
     try:
-        record_visit(body, user_agent=request.headers.get("user-agent"), own_hosts=_own_hosts(request))
+        record_visit(
+            body,
+            user_agent=request.headers.get("user-agent"),
+            own_hosts=_own_hosts(request),
+            ip=client_ip(request, get_settings()),
+        )
     except SQLAlchemyError:
         logger.exception("visit was not recorded")
     return Response(status_code=204)

@@ -40,6 +40,7 @@ services:
       FILE_DIR: /app/data/uploads
       ADMIN_PASSWORD_HASH_FILE: /run/secrets/admin_password_hash
       CRAWL_ON_START: ${CRAWL_ON_START:-true}
+      TRUSTED_PROXY_HEADER: x-visitor-address
       LOCATIONS_FILE: /app/configs/locations.yaml
       RESUME_FOLDER: /resumes
       RESUME_LIBRARY_HOST: ${RESUME_LIBRARY_HOST:-/mnt/synology/janus-soft}
@@ -47,6 +48,8 @@ services:
       AWS_SDK_LOAD_CONFIG: "1"
       AWS_CONFIG_FILE: /root/.aws/config
       AWS_SHARED_CREDENTIALS_FILE: /root/.aws/credentials
+    ports:
+      - "127.0.0.1:18000:8000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -76,12 +79,13 @@ services:
       context: .
       dockerfile: web/Dockerfile
       args:
-        API_INTERNAL_URL: http://api:8000
+        API_INTERNAL_URL: http://127.0.0.1:18000
         PUBLIC_FRAME_ANCESTOR: ${PUBLIC_FRAME_ANCESTOR:-}
     platform: linux/arm64
-    ports:
-      - "${WEB_PORT:-3000}:3000"
+    network_mode: host
     environment:
+      PORT: ${WEB_PORT:-3000}
+      API_INTERNAL_URL: http://127.0.0.1:18000
       PUBLIC_FRAME_ANCESTOR: ${PUBLIC_FRAME_ANCESTOR:-}
     depends_on:
       api:

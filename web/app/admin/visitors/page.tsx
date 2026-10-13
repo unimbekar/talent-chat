@@ -103,8 +103,8 @@ export default function VisitorsPage() {
         <div>
           <h1 className="page-title">Visitors</h1>
           <p className="page-lead">
-            Who opens the careers site, day by day and in total. A visitor is one browser; no names, emails, or IP addresses are kept, and desk staff are
-            left out.
+            Who opens the careers site, day by day and in total. A visitor is one browser. Each one keeps the IP address it connected from and a city when
+            that address is on the public internet. Names and emails are not kept, and desk staff are left out.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -338,6 +338,42 @@ export default function VisitorsPage() {
             </section>
           </div>
 
+          <section className="panel p-4 sm:p-5">
+            <h2 className="font-serif text-xl">Where they were</h2>
+            <p className="mt-1 text-sm text-ink/60">
+              A public address shows a city. An address on your own network stays labeled as local, with the IP beside it.
+            </p>
+            <div className="mt-4">
+              <Bars points={(report.places || []).map((item) => ({ label: item.label, count: item.count }))} empty="No visitors in this range yet." />
+            </div>
+            {(report.people || []).length > 0 && (
+              <div className="mt-5 overflow-x-auto">
+                <table className="w-full min-w-[36rem] text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-line text-xs uppercase tracking-wide text-ink/45">
+                      <th className="py-2 pr-3 font-medium">Location</th>
+                      <th className="py-2 pr-3 font-medium">IP address</th>
+                      <th className="py-2 pr-3 font-medium">First seen</th>
+                      <th className="py-2 pr-3 font-medium">Last seen</th>
+                      <th className="py-2 text-right font-medium">Views</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.people.map((person) => (
+                      <tr key={`${person.ip}-${person.first_at}-${person.last_at}-${person.views}`} className="border-b border-line/70 last:border-0">
+                        <td className="py-2.5 pr-3">{person.location}</td>
+                        <td className="py-2.5 pr-3 font-mono text-xs">{person.ip}</td>
+                        <td className="py-2.5 pr-3 text-ink/70">{seenAt(person.first_at)}</td>
+                        <td className="py-2.5 pr-3 text-ink/70">{seenAt(person.last_at)}</td>
+                        <td className="py-2.5 text-right tabular-nums">{count(person.views)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
           <p className="flex flex-wrap items-center gap-1.5 text-xs text-ink/50">
             Counts browsers that allow it: visitors with Do Not Track or Global Privacy Control turned on, and search-engine bots, are not counted.
             <a href="/jobs" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-pine-deep hover:underline">
@@ -348,6 +384,13 @@ export default function VisitorsPage() {
       )}
     </div>
   );
+}
+
+function seenAt(value: string | null): string {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "—";
+  return parsed.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 function Tile({ label, value, note, change, accent }: { label: string; value: string; note: string; change?: number | null; accent?: boolean }) {

@@ -11,7 +11,8 @@ from sqlalchemy.exc import ProgrammingError
 from app.admin.visitors import summary
 from app.db import public_session
 from app.main import create_app
-from app.models import Candidate, Job, JobApplication, SiteVisit, Submission
+from app.models import Candidate, Job, JobApplication, SiteVisit, SiteVisitor, Submission
+from app.public.geo import kind_of, location_label
 from app.public import visits
 from app.public.visits import device_of, is_bot, normal_path, source_of
 
@@ -154,6 +155,38 @@ def test_beacon_records_a_page_without_identifying_data(db):
     assert (row.visitor, row.kind, row.path, row.source, row.device) == (visitor, "page", "/jobs/benefits", "linkedin", "mobile")
     columns = {column.name for column in SiteVisit.__table__.columns}
     assert columns == {"id", "at", "visitor", "kind", "path", "source", "device"}
+    person = db.scalar(select(SiteVisitor))
+    assert person.visitor == visitor
+    assert person.ip
+    assert location_label(person.ip, person.city, person.region, person.country) in {"Unknown", "Local network", "Location unavailable"}
+
+
+def test_a_public_address_keeps_its_city(db, monkeypatch):
+    from app.public import geo
+
+    geo._CACHE.clear()
+    monkeypatch.setattr(geo, "lookup_public", lambda ip: ("Ashburn", "Virginia", "United States"))
+    visitor = uuid.uuid4()
+    visits.remember_visitor(db, visitor, "8.8.8.8")
+    db.add(SiteVisit(visitor=visitor, at=datetime(2026, 3, 11, 15, tzinfo=timezone.utc), kind="page", path="/jobs", source="direct", device="desktop"))
+    db.commit()
+    person = db.scalar(select(SiteVisitor))
+    assert (person.ip, person.city, person.region, person.country) == ("8.8.8.8", "Ashburn", "Virginia", "United States")
+    report = summary(db, datetime(2026, 3, 10, 4, tzinfo=timezone.utc), datetime(2026, 3, 13, 4, tzinfo=timezone.utc), NY)
+    assert report["people"][0]["ip"] == "8.8.8.8"
+    assert report["people"][0]["location"] == "Ashburn, Virginia, United States"
+    assert report["people"][0]["views"] == 1
+    assert report["places"] == [{"label": "Ashburn, Virginia, United States", "count": 1}]
+
+
+def test_place_labels():
+    assert kind_of("192.168.1.20") == "local"
+    assert kind_of("10.1.1.1") == "local"
+    assert kind_of("8.8.8.8") == "public"
+    assert kind_of("not-an-ip") == "unknown"
+    assert location_label("192.168.1.20", None, None, None) == "Local network"
+    assert location_label("8.8.8.8", "Ashburn", "Virginia", "United States") == "Ashburn, Virginia, United States"
+    assert location_label("8.8.8.8", None, None, None) == "Location unavailable"
 
 
 def test_beacon_prefers_the_campaign_tag(db):

@@ -38,6 +38,8 @@ export type VisitorReport = {
   postings: { code: string; title: string; views: number; visitors: number; applying: number }[];
   sources: Counted[];
   devices: Counted[];
+  places: { label: string; count: number }[];
+  people: { ip: string; location: string; first_at: string | null; last_at: string | null; views: number }[];
 };
 
 export function visitorQuery(from: string, to: string): URLSearchParams {

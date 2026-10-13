@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session
 
 from app.admin.access import admin_only
 from app.admin.reports import RANGE_CAP_DAYS, _fail, _zone
-from app.models import Job, JobApplication, SiteVisit
+from app.models import Job, JobApplication, SiteVisit, SiteVisitor
+from app.public.geo import location_label
 
 router = APIRouter(prefix="/admin", tags=["visitors"])
 
@@ -174,6 +175,8 @@ def summary(session: Session, start: datetime, end: datetime, zone_name: str, no
         "postings": _postings(session, start, end),
         "sources": _grouped(session, start, end, SiteVisit.source, SOURCE_LABELS),
         "devices": _grouped(session, start, end, SiteVisit.device, DEVICE_LABELS),
+        "places": _places(session, start, end),
+        "people": _people(session, start, end),
     }
 
 
@@ -207,6 +210,41 @@ def _postings(session: Session, start: datetime, end: datetime) -> list[dict]:
         {"code": code, "title": titles.get(code) or "", "views": count, "visitors": people, "applying": applying}
         for code, count, people, applying in rows
         if count
+    ]
+
+
+def _places(session: Session, start: datetime, end: datetime) -> list[dict]:
+    seen = select(SiteVisit.visitor).where(SiteVisit.at >= start, SiteVisit.at < end).distinct().subquery()
+    rows = session.scalars(select(SiteVisitor).where(SiteVisitor.visitor.in_(select(seen.c.visitor)))).all()
+    counts: dict[str, int] = {}
+    for row in rows:
+        label = location_label(row.ip, row.city, row.region, row.country)
+        counts[label] = counts.get(label, 0) + 1
+    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    return [{"label": label, "count": count} for label, count in ranked[:TOP]]
+
+
+def _people(session: Session, start: datetime, end: datetime) -> list[dict]:
+    seen = select(SiteVisit.visitor).where(SiteVisit.at >= start, SiteVisit.at < end).distinct().subquery()
+    views = dict(
+        session.execute(
+            select(SiteVisit.visitor, func.count())
+            .where(SiteVisit.at >= start, SiteVisit.at < end)
+            .group_by(SiteVisit.visitor)
+        ).all()
+    )
+    rows = session.scalars(
+        select(SiteVisitor).where(SiteVisitor.visitor.in_(select(seen.c.visitor))).order_by(SiteVisitor.last_at.desc()).limit(100)
+    ).all()
+    return [
+        {
+            "ip": row.ip,
+            "location": location_label(row.ip, row.city, row.region, row.country),
+            "first_at": row.first_at.isoformat() if row.first_at else None,
+            "last_at": row.last_at.isoformat() if row.last_at else None,
+            "views": views.get(row.visitor, 0),
+        }
+        for row in rows
     ]
 
 

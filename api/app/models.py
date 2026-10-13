@@ -371,8 +371,22 @@ class KnowledgeChunk(Base):
     document: Mapped[KnowledgeDocument] = relationship(back_populates="chunks")
 
 
+class SiteVisitor(Base):
+    """One careers-site browser. The IP is the address it connected from, and the place is a city."""
+
+    __tablename__ = "site_visitors"
+
+    visitor: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    ip: Mapped[str] = mapped_column(Text)
+    city: Mapped[str | None] = mapped_column(Text)
+    region: Mapped[str | None] = mapped_column(Text)
+    country: Mapped[str | None] = mapped_column(Text)
+    first_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class SiteVisit(Base):
-    """One careers-site view. The visitor id is a random browser id, not a person or an IP."""
+    """One careers-site view. The visitor id is a random browser id."""
 
     __tablename__ = "site_visits"
 
