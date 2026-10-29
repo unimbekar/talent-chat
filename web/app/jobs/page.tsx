@@ -28,6 +28,8 @@ export default function ChatPage() {
   useEffect(() => {
     const saved = sessionStorage.getItem("jobs-view");
     if (saved === "list" || saved === "cards") setView(saved);
+    const code = new URLSearchParams(window.location.search).get("job")?.trim();
+    if (code) setViewCode(code);
     trackVisit("page", "/jobs");
   }, []);
 
@@ -98,7 +100,10 @@ export default function ChatPage() {
             Company site
           </a>
           <Button asChild variant="outline" size="sm" className="careers-quiet">
-            <Link href="/admin/login">Recruiter sign in</Link>
+            <Link href="/admin/login?as=admin">Admin sign in</Link>
+          </Button>
+          <Button asChild variant="outline" size="sm" className="careers-quiet">
+            <Link href="/admin/login?as=recruiter">Recruiter sign in</Link>
           </Button>
         </div>
       </header>
@@ -110,7 +115,7 @@ export default function ChatPage() {
               <p className="careers-kicker">Open roles</p>
               <h1 className="careers-display">{brand.tagline}</h1>
               <p className="careers-lead">
-                Browse every open posting, ask about a skill, a city, or a company document, and apply with your résumé.
+                Browse every open posting, ask about a skill, a city, or a company document, and apply with your résumé. Janus Soft Job Matching scores it against the role as soon as you upload.
               </p>
               <Link href="/jobs/benefits" className="inline-flex w-fit items-center gap-2 text-sm text-white/80 underline-offset-4 hover:text-white hover:underline">
                 <Gift className="size-4" /> See the full benefits guide
@@ -135,7 +140,7 @@ export default function ChatPage() {
               <ol className="mt-4 space-y-3 text-sm text-white/75">
                 <li className="flex gap-3"><span className="careers-index">01</span> Browse every open posting</li>
                 <li className="flex gap-3"><span className="careers-index">02</span> Ask about a skill, a city, or a document</li>
-                <li className="flex gap-3"><span className="careers-index">03</span> Apply with your résumé</li>
+                <li className="flex gap-3"><span className="careers-index">03</span> Apply and see the résumé match</li>
               </ol>
             </div>
           </section>
@@ -270,12 +275,11 @@ export default function ChatPage() {
         <MessageCircle className="size-4" /> Ask the Desk
       </button>
 
-      {viewCode && (
+      {viewCode && !applying && (
         <JobDetailDialog
           code={viewCode}
           onClose={closeView}
           onApply={(code) => {
-            setViewCode("");
             setDesk(false);
             setApplyCode(code);
           }}
@@ -285,7 +289,15 @@ export default function ChatPage() {
           }}
         />
       )}
-      {applying && <ApplyDialog job={applying} onClose={() => setApplyCode("")} />}
+      {applying && (
+        <ApplyDialog
+          job={applying}
+          onClose={() => {
+            setApplyCode("");
+            setViewCode("");
+          }}
+        />
+      )}
     </main>
   );
 }

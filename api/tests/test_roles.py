@@ -104,6 +104,27 @@ def test_email_is_case_insensitive(db):
     assert response.status_code == 200
 
 
+def test_each_sign_in_door_accepts_only_its_role(db):
+    create_account(db, email=RECRUITER, password=RECRUITER_PASSWORD)
+    db.commit()
+    recruiter = _client().post(
+        "/admin/login", json={"email": RECRUITER, "password": RECRUITER_PASSWORD, "role": "recruiter"}
+    )
+    assert recruiter.status_code == 200
+    assert recruiter.json()["role"] == "recruiter"
+    wrong_door = _client().post(
+        "/admin/login", json={"email": RECRUITER, "password": RECRUITER_PASSWORD, "role": "admin"}
+    )
+    assert wrong_door.status_code == 403
+    assert wrong_door.json()["detail"] == "This account uses Recruiter sign in."
+    admin = _client().post("/admin/login", json={"password": ADMIN_PASSWORD, "role": "admin"})
+    assert admin.status_code == 200
+    assert admin.json()["role"] == "admin"
+    admin_on_recruiter_door = _client().post("/admin/login", json={"password": ADMIN_PASSWORD, "role": "recruiter"})
+    assert admin_on_recruiter_door.status_code == 403
+    assert admin_on_recruiter_door.json()["detail"] == "This account uses Admin sign in."
+
+
 def test_the_recruiter_password_does_not_open_the_admin_account(db):
     create_account(db, email=RECRUITER, password=RECRUITER_PASSWORD)
     db.commit()

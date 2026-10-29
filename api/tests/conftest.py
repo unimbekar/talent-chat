@@ -56,7 +56,7 @@ def db(_database):
     session.execute(
         text(
             "TRUNCATE knowledge_chunks, knowledge_documents, job_applications, submission_comments, candidate_comments, submission_events, submissions, "
-            "matches, candidate_chunks, job_chunks, candidates, jobs, "
+            "matches, candidate_chunks, job_chunks, candidates, jobs, removed_jobs, "
             "audit_log, admin_sessions, desk_users, login_attempts, push_subscriptions, admin_password, site_visits, site_visitors RESTART IDENTITY CASCADE"
         )
     )

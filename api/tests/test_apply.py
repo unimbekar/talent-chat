@@ -65,7 +65,10 @@ def _file(name="alex.txt", text=RESUME):
 
 
 def test_open_jobs_hide_clearance_lines_and_closed_postings(db):
-    _job(db)
+    job = _job(db)
+    job.external_req = "STAR 2330-04"
+    job.source_line = "G2002 - Data Scientist - Mclean VA (STAR 2330-04)"
+    db.commit()
     _job(db, code="Z9", status="closed")
     client = _client()
     try:
@@ -76,7 +79,12 @@ def test_open_jobs_hide_clearance_lines_and_closed_postings(db):
         blurb = response.json()["jobs"][0]["blurb"]
         assert "JavaScript" in blurb
         assert "TS/SCI" not in blurb
-        assert "email" not in response.json()["jobs"][0]
+        row = response.json()["jobs"][0]
+        assert "email" not in row
+        assert "external_req" not in row
+        assert "funding" not in row
+        assert "source_line" not in row
+        assert "STAR" not in response.text
     finally:
         client.__exit__(None, None, None)
 
@@ -87,6 +95,7 @@ def test_job_detail_shows_the_careers_posting_and_not_the_internal_description(d
         "Career\n\nCareer\n\nUI/UX Developer - Chantilly VA\n\nUI/UX Developer - Chantilly VA\n\n"
         "Role Overview\n\nBuild interfaces with JavaScript.\n\nClearance: TS/SCI with Full Scope Polygraph."
     )
+    job.external_req = "MOON1136-08"
     job.description_text = "Internal: client is paying 190k, do not share."
     job.description_source = "admin"
     db.add(Job(requisition_code="Z9", title="Gone", status="closed", careers_description_text="Old."))
@@ -102,6 +111,9 @@ def test_job_detail_shows_the_careers_posting_and_not_the_internal_description(d
             "Clearance: TS/SCI with Full Scope Polygraph.",
         ]
         assert "Internal" not in response.text
+        assert "external_req" not in body
+        assert "funding" not in body
+        assert "MOON" not in response.text
         assert body["description_note"] is None
 
         assert client.get("/public/jobs/Z9").status_code == 404

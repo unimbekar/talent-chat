@@ -58,7 +58,7 @@ from app.core.structure import skills_from_quotes
 from app.core.structure import parse_resume_profile, structure_job
 from app.core.tokens import chunk_text, job_vector_text
 from app.db import get_admin_db
-from app.models import AdminSession, AuditLog, CrawlState, DeskUser, Job, JobChunk, Match, SkillSynonym
+from app.models import AdminSession, AuditLog, CrawlState, DeskUser, Job, JobChunk, Match, RemovedJob, SkillSynonym
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 logger = logging.getLogger(__name__)
@@ -67,6 +67,7 @@ logger = logging.getLogger(__name__)
 class LoginIn(BaseModel):
     password: str
     email: str = ""
+    role: str = ""
 
 
 class JobEdit(BaseModel):
@@ -146,6 +147,10 @@ def login(body: LoginIn, request: Request, response: Response, session: Session 
         _audit(session, "login", outcome=f"denied:{email}"[:200])
         session.commit()
         raise HTTPException(status_code=401, detail="Incorrect email or password.")
+    asked = body.role.strip().lower()
+    if asked in {"admin", "recruiter"} and role != asked:
+        door = "Admin sign in" if role == "admin" else "Recruiter sign in"
+        raise HTTPException(status_code=403, detail=f"This account uses {door}.")
     clear_failures(session, ip)
     token = issue_session(session, email=email, role=role, user_id=user.id if user else None)
     if user is not None:
@@ -195,10 +200,13 @@ def login_options(session: Session = Depends(get_admin_db)):
 
 
 @router.get("/login/google")
-def login_google():
+def login_google(role: str = ""):
     if not google_configured():
         raise HTTPException(status_code=404, detail="Google sign-in is not configured.")
-    return RedirectResponse(authorization_url(sign_state()), status_code=302)
+    asked = role.strip().lower()
+    if asked not in {"admin", "recruiter"}:
+        asked = ""
+    return RedirectResponse(authorization_url(sign_state(asked)), status_code=302)
 
 
 @router.get("/login/google/callback")
@@ -216,7 +224,7 @@ def login_google_callback(
     if lock_status(session, ip):
         return RedirectResponse(f"{base}/admin/login?error=locked", status_code=302)
     try:
-        email, refresh = exchange_code(code, state)
+        email, refresh, asked = exchange_code(code, state)
     except GoogleSignInError as exc:
         record_failure(session, ip)
         _audit(session, "login", outcome=exc.code)
@@ -229,6 +237,8 @@ def login_google_callback(
         return RedirectResponse(f"{base}/admin/login?error=inactive", status_code=302)
     clear_failures(session, ip)
     role = account.role if account else "admin"
+    if asked and role != asked:
+        return RedirectResponse(f"{base}/admin/login?as={asked}&error=role", status_code=302)
     token = issue_session(
         session, email=email, google_refresh=refresh, role=role, user_id=account.id if account else None
     )
@@ -444,6 +454,22 @@ def reopen_job(code: str, session: Session = Depends(admin_only("edit_jobs"))):
     job.close_note = None
     session.commit()
     return _job_out(job)
+
+
+@router.delete("/jobs/{code}")
+def delete_job(code: str, session: Session = Depends(admin_only("delete"))):
+    """Remove a posting from the desk. Submissions go with it. A later crawl brings it back when the careers page still lists that code."""
+    job = session.scalar(select(Job).where(Job.requisition_code == code))
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    code_text = job.requisition_code
+    job_id = job.id
+    if session.get(RemovedJob, code_text) is None:
+        session.add(RemovedJob(requisition_code=code_text))
+    _audit(session, "job_delete", job_id, code_text[:200])
+    session.delete(job)
+    session.commit()
+    return {"requisition_code": code_text}
 
 
 @router.get("/review")
@@ -1171,6 +1197,7 @@ def _job_out(job: Job) -> dict:
         "closed_manually": bool(job.closed_manually),
         "program_tag": job.program_tag,
         "external_req": job.external_req,
+        "funding": job.funding if job.funding in {"proposed", "funded"} else "funded",
         "needs_review": job.needs_review,
         "description_source": job.description_source,
         "description_text": job.description_text,

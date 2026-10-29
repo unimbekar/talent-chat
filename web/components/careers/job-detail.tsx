@@ -154,7 +154,9 @@ export function JobDetailDialog({
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 border-t border-white/10 px-5 py-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
+        <div className="border-t border-white/10 px-5 py-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
+          <p className="mb-2 text-[11px] leading-4 text-white/45">Apply and Janus Soft Job Matching scores your résumé as soon as you upload it.</p>
+          <div className="flex flex-wrap items-center gap-3">
           <Button type="button" className="careers-action" onClick={() => onApply(code)} disabled={!!error}>
             Apply
           </Button>
@@ -173,6 +175,7 @@ export function JobDetailDialog({
               On the careers site <ExternalLink className="size-3.5" />
             </a>
           )}
+          </div>
         </div>
       </div>
     </div>

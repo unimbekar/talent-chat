@@ -174,7 +174,7 @@ export function AskDesk({
         {turns.length === 0 && (
           <div className="desk-surface rounded-2xl px-4 py-4">
             <p className="desk-muted text-sm leading-6">
-              Ask which jobs need a tool, which are in a city, or what the benefits are. Job answers quote the postings. Benefit answers quote the company documents.
+              Ask which jobs need a tool, which are in a city, or what the benefits are. Job answers quote the postings. Benefit answers quote the company documents. When you apply, Janus Soft Job Matching scores your résumé against that role.
             </p>
             <div className="mt-3 flex flex-col gap-2">
               {[...brand.examples, "Show me the health benefits"].filter((item, at, all) => all.indexOf(item) === at).map((example) => (

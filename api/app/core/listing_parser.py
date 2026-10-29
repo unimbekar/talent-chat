@@ -8,6 +8,7 @@ from app.core.locations import Location, load_locations, match_location_segment
 
 _CODE = re.compile(r"^([A-Z][0-9]{3,5})(?:\s*-\s*|\s+)(.*)$")
 _STATUS_PREFIX = re.compile(r"(?i)^(proposal|upcoming)\s*-\s*")
+_PROPOSAL_WORD = re.compile(r"(?i)\bpropos(?:al|ed|la)\b")
 _SEPARATOR = re.compile(r"^[-\s]+$")
 _PROGRAM = re.compile(r"^[A-Z]{2,6}$")
 _SITE_ID = re.compile(r"/jobs/(\d+)")
@@ -20,6 +21,7 @@ class ListingRow:
     location: str | None
     program_tag: str | None
     external_req: str | None
+    funding: str
     status: str
     source_line: str
     site_job_id: str | None
@@ -54,6 +56,7 @@ def parse_listing_line(
             location=None,
             program_tag=None,
             external_req=None,
+            funding="funded",
             status=status,
             source_line=raw,
             site_job_id=None,
@@ -64,7 +67,7 @@ def parse_listing_line(
     code = code_match.group(1)
     rest = code_match.group(2).strip()
     parens = [p.strip() for p in re.findall(r"\(([^)]*)\)", rest)]
-    external = "; ".join(parens) if parens else None
+    external, funding = _codes_and_funding(parens)
     rest = re.sub(r"\([^)]*\)", " ", rest)
     rest = re.sub(r"\s*-\s*", "\x1f", rest)
     parts = [p.strip() for p in rest.split("\x1f") if p.strip()]
@@ -107,6 +110,7 @@ def parse_listing_line(
         location=city,
         program_tag=program,
         external_req=external,
+        funding=funding,
         status=status,
         source_line=raw,
         site_job_id=site_job_id,
@@ -115,11 +119,34 @@ def parse_listing_line(
     )
 
 
+def _codes_and_funding(parens: list[str]) -> tuple[str | None, str]:
+    """Parentheses hold the client code. A proposal word in parentheses marks the job proposed."""
+    codes: list[str] = []
+    proposed = False
+    for part in parens:
+        text = part.strip()
+        if not text:
+            continue
+        if _PROPOSAL_WORD.search(text):
+            proposed = True
+            leftover = _PROPOSAL_WORD.sub(" ", text)
+            leftover = re.sub(r"^[\s\-–—,;/]+|[\s\-–—,;/]+$", "", leftover).strip()
+            if leftover:
+                codes.append(leftover)
+            continue
+        codes.append(text)
+    return ("; ".join(codes) or None, "proposed" if proposed else "funded")
+
+
 def _anchor_pairs(html: str) -> list[tuple[str, str]]:
     pairs: list[tuple[str, str]] = []
     for match in re.finditer(r'<a\b[^>]*href="([^"]+)"[^>]*>(.*?)</a>', html, flags=re.I | re.S):
         href, inner = match.group(1), match.group(2)
-        text = unescape(re.sub(r"<[^>]+>", " ", inner))
+        # The careers page prints (proposal) in the same paragraph, after the link.
+        after = html[match.end() : match.end() + 500]
+        stop = re.search(r"<a\b|</p>", after, flags=re.I)
+        tail = after[: stop.start()] if stop else ""
+        text = unescape(re.sub(r"<[^>]+>", " ", f"{inner} {tail}"))
         text = re.sub(r"\s+", " ", text).strip()
         if text:
             pairs.append((text, href))

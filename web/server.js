@@ -1,20 +1,17 @@
 const { createServer } = require("http");
 const { parse } = require("url");
 const next = require("next");
+const { visitorAddress } = require("./lib/client-address");
 
 const port = Number(process.env.PORT || 3000);
 const app = next({ dev: false, hostname: "0.0.0.0", port });
 const handle = app.getRequestHandler();
 
-function plain(ip) {
-  const text = String(ip || "").trim();
-  return text.startsWith("::ffff:") ? text.slice(7) : text;
-}
-
 app.prepare().then(() => {
   createServer((req, res) => {
-    // The TCP peer, never a header the browser sent.
-    req.headers["x-visitor-address"] = plain(req.socket.remoteAddress);
+    // Direct visitors keep the TCP peer. Funnel connects from loopback and
+    // puts the real address in X-Forwarded-For; a browser on any other path cannot.
+    req.headers["x-visitor-address"] = visitorAddress(req.socket.remoteAddress, req.headers["x-forwarded-for"]);
     handle(req, res, parse(req.url || "/", true));
   }).listen(port, "0.0.0.0");
 });

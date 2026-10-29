@@ -36,6 +36,8 @@ type JobCandidate = {
 
 type JobDetail = {
   requisition_code: string;
+  external_req: string | null;
+  funding: string | null;
   title: string | null;
   location: string | null;
   status: string;
@@ -57,6 +59,7 @@ export default function JobDetailPage() {
   const params = useParams<{ code: string }>();
   const router = useRouter();
   const canEdit = useCan("edit_jobs");
+  const canDelete = useCan("delete");
   const code = decodeURIComponent(params.code);
   const [job, setJob] = useState<JobDetail | null>(null);
   const [location, setLocation] = useState("");
@@ -74,6 +77,7 @@ export default function JobDetailPage() {
   const [copyNote, setCopyNote] = useState("");
   const [closeNote, setCloseNote] = useState("");
   const [closing, setClosing] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [submitted, setSubmitted] = useState<SubmissionIndex>({});
   const [submissionReload, setSubmissionReload] = useState(0);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
@@ -140,6 +144,27 @@ export default function JobDetailPage() {
     if (!list) return;
     copyText(list);
     setCopiedSel(true);
+  }
+
+  async function deleteJob() {
+    setClosing(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/admin/jobs/${code}`, { method: "DELETE" });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) {
+        router.push("/admin/login");
+        return;
+      }
+      if (!response.ok) {
+        setMessage(typeof data.detail === "string" ? data.detail : "The job was not deleted.");
+        return;
+      }
+      router.push("/admin/jobs");
+    } catch {
+      setMessage("The job was not deleted.");
+      setClosing(false);
+    }
   }
 
   async function reopenJob() {
@@ -283,10 +308,13 @@ export default function JobDetailPage() {
               All jobs
             </Link>
           </div>
-          <p className="mt-2 font-mono text-sm text-pine">{job.requisition_code}</p>
+          <p className="mt-2 font-mono text-sm text-pine">
+            {job.requisition_code}
+            {job.external_req ? <span className="text-ink/70"> · {job.external_req}</span> : null}
+          </p>
           <h1 className="page-title">{job.title}</h1>
           <p className="text-sm text-ink/70">
-            {job.location} · {job.status} · {job.description_source}
+            {job.location} · {job.funding === "proposed" ? "Proposed" : "Funded"} · {job.status} · {job.description_source}
           </p>
         </div>
         {job.needs_review && <Badge>Needs review</Badge>}
@@ -315,9 +343,29 @@ export default function JobDetailPage() {
         <section className="panel p-4">
           <h2 className="font-serif text-xl">Closed</h2>
           <p className="mt-2 text-sm leading-6">{job.close_note || "No note was saved."}</p>
-          <Button type="button" variant="outline" className="mt-3" disabled={closing} onClick={reopenJob}>
-            {closing ? "Reopening…" : "Reopen job"}
-          </Button>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button type="button" variant="outline" disabled={closing} onClick={reopenJob}>
+              {closing && !confirmDelete ? "Reopening…" : "Reopen job"}
+            </Button>
+            {canDelete &&
+              (confirmDelete ? (
+                <>
+                  <span className="text-sm text-ink">
+                    Delete {code}? Its submissions go with it. If the careers page still lists it, the next recrawl brings it back.
+                  </span>
+                  <Button type="button" variant="danger" disabled={closing} onClick={deleteJob}>
+                    {closing ? "Deleting…" : "Delete permanently"}
+                  </Button>
+                  <Button type="button" variant="outline" disabled={closing} onClick={() => setConfirmDelete(false)}>
+                    Cancel
+                  </Button>
+                </>
+              ) : (
+                <Button type="button" variant="danger" disabled={closing} onClick={() => setConfirmDelete(true)}>
+                  Delete job
+                </Button>
+              ))}
+          </div>
         </section>
       )}
 

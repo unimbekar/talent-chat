@@ -41,6 +41,7 @@ def test_fixture_line(line, code, title, city, program, external, status):
     assert row.location == city
     assert row.program_tag == program
     assert row.external_req == external
+    assert row.funding == "funded"
     assert row.status == status
     assert row.source_line == line
     assert row.needs_review is False
@@ -68,6 +69,7 @@ def test_special_cases():
     proposal = parse_listing_line("Proposal - G2001 - Analyst - Ashburn VA", href=HREF)
     assert proposal is not None
     assert proposal.status == "proposal"
+    assert proposal.funding == "funded"
     assert proposal.requisition_code == "G2001"
     assert proposal.title == "Analyst"
     assert proposal.location == "Ashburn, VA"
@@ -84,6 +86,46 @@ def test_special_cases():
     upcoming_mid = parse_listing_line("A1088 - Something upcoming - Herndon VA", href=HREF)
     assert upcoming_mid is not None
     assert upcoming_mid.status == "upcoming"
+
+
+def test_a_proposal_in_parentheses_marks_the_job_proposed():
+    both = parse_listing_line(
+        "L4003 - Systems Architect (STAR 4448) - Chantilly VA (proposal)", href=HREF
+    )
+    assert both is not None
+    assert both.external_req == "STAR 4448"
+    assert both.funding == "proposed"
+    assert both.status == "open"
+    assert both.title == "Systems Architect"
+    assert both.location == "Chantilly, VA"
+
+    only = parse_listing_line("L4005 - AI/ML Engineer - Chantilly VA (proposal)", href=HREF)
+    assert only is not None
+    assert only.external_req is None
+    assert only.funding == "proposed"
+
+    proposed = parse_listing_line("A1001 - UI/UX Developer - Chantilly VA (proposed)", href=HREF)
+    assert proposed is not None
+    assert proposed.funding == "proposed"
+    assert proposed.external_req is None
+
+    misspelled = parse_listing_line("A1002 - Engineer - Herndon VA (proposla)", href=HREF)
+    assert misspelled is not None
+    assert misspelled.funding == "proposed"
+
+
+def test_proposal_beside_the_link_marks_the_job_proposed():
+    html = """
+    <p><a href="https://janus-soft.com/jobs/4003"><span>L4003 - Systems Architect (STAR 4448) - Chantilly VA</span></a>
+    <span>(proposal)</span></p>
+    <p><a href="https://janus-soft.com/jobs/1001"><span>A1001 - UI/UX Developer - Chantilly VA</span></a></p>
+    """
+    rows = {row.requisition_code: row for row in parse_listing_html(html)}
+    assert rows["L4003"].funding == "proposed"
+    assert rows["L4003"].external_req == "STAR 4448"
+    assert rows["L4003"].title == "Systems Architect"
+    assert rows["A1001"].funding == "funded"
+    assert rows["A1001"].external_req is None
 
 
 def test_separator_and_blank_ignored():

@@ -15,7 +15,7 @@ from app.core.llm import LLMClient
 from app.core.redact import redact_ssn
 from app.core.structure import structure_job
 from app.core.tokens import chunk_text, job_vector_text
-from app.models import CrawlState, Job, JobChunk
+from app.models import CrawlState, Job, JobChunk, RemovedJob
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +134,13 @@ def run_crawl(
         return state
 
     seen: set[str] = set()
+    removed = set(session.scalars(select(RemovedJob.requisition_code)).all())
     for row in rows:
+        if row.requisition_code in removed:
+            forgotten = session.get(RemovedJob, row.requisition_code)
+            if forgotten is not None:
+                session.delete(forgotten)
+            removed.discard(row.requisition_code)
         seen.add(row.requisition_code)
         job = session.scalar(select(Job).where(Job.requisition_code == row.requisition_code))
         if job is None:
@@ -144,6 +150,7 @@ def run_crawl(
         job.location = row.location
         job.program_tag = row.program_tag
         job.external_req = row.external_req
+        job.funding = row.funding
         if not job.closed_manually:
             job.status = row.status
             if job.status != "closed":

@@ -34,8 +34,11 @@ def redirect_uri() -> str:
     return f"{base}/api/admin/login/google/callback"
 
 
-def sign_state() -> str:
-    return _state_serializer().dumps({"ok": 1})
+def sign_state(role: str = "") -> str:
+    payload: dict = {"ok": 1}
+    if role in {"admin", "recruiter"}:
+        payload["role"] = role
+    return _state_serializer().dumps(payload)
 
 
 def authorization_url(state: str) -> str:
@@ -56,10 +59,12 @@ def authorization_url(state: str) -> str:
     return f"{_AUTH}?{query}"
 
 
-def exchange_code(code: str, state: str) -> tuple[str, str]:
-    """Return (email, refresh token). Raises GoogleSignInError."""
-    if not _valid_state(state):
-        raise GoogleSignInError("state")
+def exchange_code(code: str, state: str) -> tuple[str, str, str]:
+    """Return (email, refresh token, requested role). Raises GoogleSignInError."""
+    claims = state_claims(state)
+    asked = str(claims.get("role") or "")
+    if asked not in {"admin", "recruiter"}:
+        asked = ""
     settings = get_settings()
     try:
         response = httpx.post(
@@ -88,7 +93,7 @@ def exchange_code(code: str, state: str) -> tuple[str, str]:
         allowed=settings.company_email_domain,
     ):
         raise GoogleSignInError("domain")
-    return str(claims["email"]).strip().lower(), str(token.get("refresh_token") or "")
+    return str(claims["email"]).strip().lower(), str(token.get("refresh_token") or ""), asked
 
 
 def access_token(refresh_token: str) -> str:
@@ -129,11 +134,13 @@ def _state_serializer() -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(get_settings().session_secret, salt="google-login")
 
 
-def _valid_state(state: str) -> bool:
+def state_claims(state: str) -> dict:
     if not state:
-        return False
+        raise GoogleSignInError("state")
     try:
-        _state_serializer().loads(state, max_age=600)
-    except (BadSignature, SignatureExpired):
-        return False
-    return True
+        data = _state_serializer().loads(state, max_age=600)
+    except (BadSignature, SignatureExpired) as exc:
+        raise GoogleSignInError("state") from exc
+    if not isinstance(data, dict) or data.get("ok") != 1:
+        raise GoogleSignInError("state")
+    return data

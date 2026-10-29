@@ -23,7 +23,7 @@ type Account = {
 };
 
 const RECRUITER_LIMITS = [
-  "Cannot delete anything: submissions, résumés, comments, or documents",
+  "Cannot delete anything: jobs, submissions, résumés, comments, or documents",
   "No burden calculator, and no margins or bill rates on the pipeline",
   "Cannot edit, close, reopen, or recrawl jobs",
   "Cannot run folder or cloud imports, or export reports",

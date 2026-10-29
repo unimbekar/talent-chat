@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, FileUp, Info, RefreshCw, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,7 @@ export function ApplyDialog({ job, onClose }: { job: OpenRole; onClose: () => vo
   const [checking, setChecking] = useState(false);
   const [check, setCheck] = useState<Check | null>(null);
   const [checkError, setCheckError] = useState("");
+  const [claims, setClaims] = useState<Record<string, string>>({});
   const fileInput = useRef<HTMLInputElement>(null);
   const eligible = fsp === "yes";
 
@@ -75,6 +76,7 @@ export function ApplyDialog({ job, onClose }: { job: OpenRole; onClose: () => vo
   function onFile(event: ChangeEvent<HTMLInputElement>) {
     const chosen = event.target.files?.[0] || null;
     setFile(chosen);
+    setClaims({});
     if (chosen) void runCheck(chosen);
     else {
       setCheck(null);
@@ -90,6 +92,15 @@ export function ApplyDialog({ job, onClose }: { job: OpenRole; onClose: () => vo
     const form = new FormData(event.currentTarget);
     form.set("requisition_code", job.requisition_code);
     form.set("fsp", "yes");
+    const fitNote = Object.entries(claims)
+      .filter(([, text]) => text != null)
+      .map(([line, text]) => (text.trim() ? `${line}: ${text.trim()}` : line))
+      .join("; ");
+    if (fitNote) {
+      const written = String(form.get("note") || "").trim();
+      const combined = [written, `Job match: the candidate says these lines are on the résumé. ${fitNote}`].filter(Boolean).join(" ");
+      form.set("note", combined.slice(0, 1000));
+    }
     try {
       const response = await fetch("/api/public/apply", { method: "POST", body: form });
       const body = await response.json().catch(() => ({}));
@@ -157,7 +168,7 @@ export function ApplyDialog({ job, onClose }: { job: OpenRole; onClose: () => vo
                   ) : (
                     <>
                       <span className="desk-text block text-sm font-medium">Choose your résumé</span>
-                      <span className="desk-faint block text-xs">See which requirements it shows before you send it.</span>
+                      <span className="desk-faint block text-xs">Janus Soft Job Matching runs as soon as the file is chosen.</span>
                     </>
                   )}
                 </span>
@@ -179,7 +190,21 @@ export function ApplyDialog({ job, onClose }: { job: OpenRole; onClose: () => vo
               </label>
               {checking && <CheckSkeleton />}
               {checkError && <p className="desk-warn desk-surface rounded-xl px-3 py-2 text-sm">{checkError}</p>}
-              {check && <CheckPanel check={check} onReplace={() => fileInput.current?.click()} />}
+              {check && (
+                <CheckPanel
+                  check={check}
+                  claims={claims}
+                  onClaim={(key, note) =>
+                    setClaims((current) => {
+                      const next = { ...current };
+                      if (note == null) delete next[key];
+                      else next[key] = note;
+                      return next;
+                    })
+                  }
+                  onReplace={() => fileInput.current?.click()}
+                />
+              )}
             </section>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Full name" name="full_name" required autoComplete="name" />
@@ -237,12 +262,12 @@ export function ApplyDialog({ job, onClose }: { job: OpenRole; onClose: () => vo
 
 function CheckSkeleton() {
   return (
-    <div className="desk-surface flex items-center gap-4 rounded-2xl px-4 py-4" aria-label="Checking your résumé">
+    <div className="desk-surface flex items-center gap-4 rounded-2xl px-4 py-4" aria-label="Matching your résumé to this role">
       <span className="desk-shimmer size-14 shrink-0 rounded-full" />
       <span className="flex-1 space-y-2">
+        <span className="desk-faint text-[11px] font-medium uppercase tracking-[0.16em]">Janus Soft Job Matching</span>
         <span className="desk-shimmer block h-3 w-1/2 rounded" />
         <span className="desk-shimmer block h-3 w-4/5 rounded" />
-        <span className="desk-shimmer block h-3 w-2/3 rounded" />
       </span>
     </div>
   );
@@ -290,20 +315,44 @@ function Ring({ hit, total }: { hit: number; total: number }) {
   );
 }
 
-function CheckPanel({ check, onReplace }: { check: Check; onReplace: () => void }) {
-  const [showDesired, setShowDesired] = useState(false);
+function itemKey(item: Item): string {
+  const name = item.label ? `${item.label}: ${item.text}` : item.text;
+  return name.slice(0, 180);
+}
+
+function CheckPanel({
+  check,
+  claims,
+  onClaim,
+  onReplace,
+}: {
+  check: Check;
+  claims: Record<string, string>;
+  onClaim: (key: string, note: string | null) => void;
+  onReplace: () => void;
+}) {
+  const [showCoveredDesired, setShowCoveredDesired] = useState(false);
+  const panel = useRef<HTMLDivElement>(null);
   const missingTitle = check.title_tools.filter((tool) => !tool.have);
   const required = [...check.required.items].sort((a, b) => Number(a.met) - Number(b.met));
+  const desiredMissing = check.desired.items.filter((item) => !item.met);
+  const desiredCovered = check.desired.items.filter((item) => item.met);
+
+  useEffect(() => {
+    panel.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, []);
+
   return (
-    <div className="desk-surface-strong animate-fade-up overflow-hidden rounded-2xl">
+    <div ref={panel} className="desk-surface-strong animate-fade-up overflow-hidden rounded-2xl">
       <div className="flex items-center gap-4 px-4 py-4">
         {check.required.total > 0 ? <Ring hit={check.required.hit} total={check.required.total} /> : null}
         <div className="min-w-0">
-          <p className="desk-text font-medium">{VERDICT[check.verdict]}</p>
+          <p className="desk-accent text-[11px] font-medium uppercase tracking-[0.16em]">Janus Soft Job Matching</p>
+          <p className="desk-text mt-1 font-medium">{VERDICT[check.verdict]}</p>
           <p className="desk-muted text-sm leading-5">{verdictDetail(check)}</p>
           {check.desired.total > 0 && (
             <p className="desk-faint mt-1 text-xs">
-              Nice to have: {check.desired.hit} of {check.desired.total}
+              Desired skills: {check.desired.hit} of {check.desired.total}
             </p>
           )}
         </div>
@@ -314,22 +363,35 @@ function CheckPanel({ check, onReplace }: { check: Check; onReplace: () => void 
         </p>
       )}
       {required.length > 0 && (
-        <ul className="desk-line divide-y border-t">
-          {required.map((item, index) => (
-            <Requirement key={index} item={item} />
-          ))}
-        </ul>
+        <div>
+          <p className="desk-muted px-4 pb-1 text-[11px] font-medium uppercase tracking-[0.14em]">Required</p>
+          <ul className="desk-line divide-y border-t">
+            {required.map((item) => (
+              <Requirement key={itemKey(item)} item={item} claim={claims[itemKey(item)]} onClaim={(note) => onClaim(itemKey(item), note)} />
+            ))}
+          </ul>
+        </div>
       )}
-      {check.desired.items.length > 0 && (
+      {desiredMissing.length > 0 && (
         <div className="desk-line border-t">
-          <button type="button" onClick={() => setShowDesired((value) => !value)} aria-expanded={showDesired} className="desk-hover flex w-full items-center justify-between px-4 py-2.5 text-left text-sm">
-            <span className="desk-muted">Nice to have</span>
-            <ChevronDown className={`desk-faint size-4 transition ${showDesired ? "rotate-180" : ""}`} />
+          <p className="desk-muted px-4 pb-1 pt-3 text-[11px] font-medium uppercase tracking-[0.14em]">Desired, not shown</p>
+          <ul className="desk-line divide-y border-t">
+            {desiredMissing.map((item) => (
+              <Requirement key={itemKey(item)} item={item} claim={claims[itemKey(item)]} onClaim={(note) => onClaim(itemKey(item), note)} />
+            ))}
+          </ul>
+        </div>
+      )}
+      {desiredCovered.length > 0 && (
+        <div className="desk-line border-t">
+          <button type="button" onClick={() => setShowCoveredDesired((value) => !value)} aria-expanded={showCoveredDesired} className="desk-hover flex w-full items-center justify-between px-4 py-2.5 text-left text-sm">
+            <span className="desk-muted">Desired skills your résumé shows ({desiredCovered.length})</span>
+            <ChevronDown className={`desk-faint size-4 transition ${showCoveredDesired ? "rotate-180" : ""}`} />
           </button>
-          {showDesired && (
+          {showCoveredDesired && (
             <ul className="desk-line divide-y border-t">
-              {check.desired.items.map((item, index) => (
-                <Requirement key={index} item={item} />
+              {desiredCovered.map((item) => (
+                <Requirement key={itemKey(item)} item={item} />
               ))}
             </ul>
           )}
@@ -338,18 +400,18 @@ function CheckPanel({ check, onReplace }: { check: Check; onReplace: () => void 
       <div className="desk-line flex gap-2.5 border-t px-4 py-3">
         <Info className="desk-faint mt-0.5 size-4 shrink-0" />
         <p className="desk-faint text-xs leading-5">
-          The check reads the words on your résumé. If you have experience it did not find, name the tool or the work the way the posting does, then{" "}
+          Job Matching reads the words on your résumé. Update the file and{" "}
           <button type="button" onClick={onReplace} className="desk-accent font-medium underline-offset-2 hover:underline">
-            replace the file
-          </button>
-          . You can apply either way. This check does not save your résumé; it is kept only when you submit.
+            replace it
+          </button>{" "}
+          to score again. If a missing line is really there, say so beside it. That note goes with the application. The résumé is kept only when you submit.
         </p>
       </div>
     </div>
   );
 }
 
-function Requirement({ item }: { item: Item }) {
+function Requirement({ item, claim, onClaim }: { item: Item; claim?: string; onClaim?: (note: string | null) => void }) {
   return (
     <li className="desk-line flex gap-3 px-4 py-3">
       <span className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-full ${item.met ? "desk-pill-ok" : "desk-pill-miss"}`}>
@@ -368,6 +430,27 @@ function Requirement({ item }: { item: Item }) {
                 {tool.name}
               </span>
             ))}
+          </div>
+        )}
+        {!item.met && onClaim && (
+          <div className="mt-2">
+            <label className="desk-muted inline-flex cursor-pointer items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={claim != null}
+                onChange={(event) => onClaim(event.target.checked ? "" : null)}
+              />
+              I have this
+            </label>
+            {claim != null && (
+              <input
+                value={claim}
+                maxLength={160}
+                onChange={(event) => onClaim(event.target.value)}
+                placeholder="Where it shows, if you want to say"
+                className="desk-field mt-2 w-full rounded-lg px-2.5 py-1.5 text-xs outline-none"
+              />
+            )}
           </div>
         )}
       </div>
