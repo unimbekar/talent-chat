@@ -257,6 +257,20 @@ class CandidateComment(Base):
     candidate: Mapped[Candidate] = relationship()
 
 
+class ResumeUpdate(Base):
+    """Justifications for requirements a résumé does not show. The uploaded file is left as it is."""
+
+    __tablename__ = "resume_updates"
+    __table_args__ = (UniqueConstraint("candidate_id", "job_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    candidate_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("candidates.id", ondelete="CASCADE"), index=True)
+    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    items: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    updated_by: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class SkillSynonym(Base):
     __tablename__ = "skill_synonyms"
 

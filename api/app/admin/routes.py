@@ -472,18 +472,12 @@ def delete_job(code: str, session: Session = Depends(admin_only("delete"))):
     return {"requisition_code": code_text}
 
 
-@router.get("/review")
-def review_pair(code: str, candidate_id: uuid.UUID, session: Session = Depends(require_desk)):
+def _review_one(job, candidate) -> dict:
+    from app.core.experience import annotate
+    from app.core.labor import candidate_roles, role_conflict
     from app.core.skills import tools_and_languages
     from app.core.structure import resume_facts
-    from app.models import Candidate
 
-    job = session.scalar(select(Job).where(Job.requisition_code == code))
-    if job is None:
-        raise HTTPException(status_code=404, detail="Job not found.")
-    candidate = session.get(Candidate, candidate_id)
-    if candidate is None:
-        raise HTTPException(status_code=404, detail="Candidate not found.")
     facts = resume_facts(candidate.redacted_text or "")
     names = {item["name"] for item in facts["skills"]}
     if not names:
@@ -493,8 +487,6 @@ def review_pair(code: str, candidate_id: uuid.UUID, session: Session = Depends(r
     nice_lines = _posting_lines(job, "nice", list(job.nice_to_have_skills or []))
     mandatory = section_coverage(names, must_lines, text)
     desired = section_coverage(names, nice_lines, text)
-    from app.core.labor import candidate_roles, role_conflict
-
     have = {name.lower() for name in names}
     title_missing = [tool for tool in tools_and_languages(job.title or "") if tool.lower() not in have]
     role_missing = role_conflict(candidate.original_filename or "", text, list(candidate.titles or []), job.title)
@@ -506,6 +498,7 @@ def review_pair(code: str, candidate_id: uuid.UUID, session: Session = Depends(r
         text=text,
         titles=list(candidate.titles or []),
     )
+    by_line = {item["line"]: item for item in annotate(text, list(mandatory["matched"]) + list(desired["matched"]))}
     mandatory_pct = mandatory["pct"]
     return {
         "job": {"requisition_code": job.requisition_code, "title": job.title, "location": job.location},
@@ -515,6 +508,7 @@ def review_pair(code: str, candidate_id: uuid.UUID, session: Session = Depends(r
             "original_filename": candidate.original_filename,
             "email": candidate.email,
             "location": candidate.location,
+            "has_file": bool(candidate.original_path),
         },
         "mandatory_pct": mandatory_pct,
         "mandatory_hit": mandatory["hit"],
@@ -530,7 +524,74 @@ def review_pair(code: str, candidate_id: uuid.UUID, session: Session = Depends(r
         "mandatory_missing": mandatory["missing"],
         "desired_matched": desired["matched"],
         "desired_missing": desired["missing"],
+        "mandatory_experience": [by_line[line] for line in mandatory["matched"] if line in by_line],
+        "desired_experience": [by_line[line] for line in desired["matched"] if line in by_line],
     }
+
+
+def _review_rank(row: dict) -> tuple:
+    return (
+        1 if row["meets_bar"] else 0,
+        row["mandatory_pct"] if row["mandatory_pct"] is not None else -1,
+        row["desired_pct"] if row["desired_pct"] is not None else -1,
+    )
+
+
+@router.get("/review")
+def review_pair(code: str, candidate_id: uuid.UUID, session: Session = Depends(require_desk)):
+    from app.models import Candidate
+
+    job = session.scalar(select(Job).where(Job.requisition_code == code))
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    candidate = session.get(Candidate, candidate_id)
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="Candidate not found.")
+    return _review_one(job, candidate)
+
+
+@router.get("/review/sheet")
+def review_sheet(code: str, candidates: str = "", session: Session = Depends(require_desk)):
+    """Submission workbook: years of experience on every requirement the résumé meets."""
+    from app.admin.submission_sheet import submission_workbook
+    from app.models import Candidate
+
+    ids: list[uuid.UUID] = []
+    for part in candidates.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            ids.append(uuid.UUID(part))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="One of the résumé ids is not valid.") from exc
+    ids = list(dict.fromkeys(ids))
+    if not ids:
+        raise HTTPException(status_code=400, detail="Choose at least one résumé.")
+    if len(ids) > 25:
+        raise HTTPException(status_code=400, detail="Review up to 25 résumés at a time.")
+    job = session.scalar(select(Job).where(Job.requisition_code == code))
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    reviews = []
+    for candidate_id in ids:
+        candidate = session.get(Candidate, candidate_id)
+        if candidate is not None:
+            reviews.append(_review_one(job, candidate))
+    if not reviews:
+        raise HTTPException(status_code=404, detail="Candidate not found.")
+    reviews.sort(key=_review_rank, reverse=True)
+    payload = submission_workbook(
+        reviews,
+        _posting_lines(job, "must", list(job.must_have_skills or [])),
+        _posting_lines(job, "nice", list(job.nice_to_have_skills or [])),
+    )
+    filename = f"submission-{job.requisition_code}.xlsx"
+    return Response(
+        content=payload,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/jobs/recrawl")

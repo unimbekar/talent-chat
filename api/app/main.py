@@ -15,6 +15,7 @@ from app.admin.benefits_routes import router as benefits_router
 from app.admin.pipeline import router as pipeline_router
 from app.admin.push_routes import router as push_router
 from app.admin.reports import router as reports_router
+from app.admin.resume_update_routes import router as resume_update_router
 from app.admin.routes import router as admin_router
 from app.admin.settings_routes import router as settings_router
 from app.admin.team_routes import router as team_router
@@ -167,6 +168,7 @@ def create_app() -> FastAPI:
     app.include_router(pipeline_router)
     app.include_router(push_router)
     app.include_router(reports_router)
+    app.include_router(resume_update_router)
     app.include_router(assistant_router)
     app.include_router(knowledge_router)
     app.include_router(benefits_router)

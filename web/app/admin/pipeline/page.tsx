@@ -139,24 +139,25 @@ export default function PipelinePage() {
         )}
         <ul className="divide-y divide-line">
           {rows.map((row) => (
-            <li key={row.id}>
-              <Link href={`/admin/submissions/${row.id}`} className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 transition hover:bg-desk/70">
-                <span className="min-w-0">
-                  <span className="block truncate font-medium">{personName(row.candidate)}</span>
-                  <span className="mt-0.5 block truncate text-sm text-ink/65">
-                    <span className="font-mono text-pine">{row.job.requisition_code}</span> · {row.job.title || "Untitled job"} · {row.job.location || "No city"}
-                  </span>
-                  <span className="mt-1 block text-xs text-ink/50">
-                    Updated {when(row.updated_at)}
-                    {row.comment_count ? ` · ${row.comment_count} ${row.comment_count === 1 ? "comment" : "comments"}` : ""}
-                  </span>
+            <li key={row.id} className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 transition hover:bg-desk/70">
+              <Link href={`/admin/submissions/${row.id}`} className="min-w-0 flex-1">
+                <span className="block truncate font-medium">{personName(row.candidate)}</span>
+                <span className="mt-0.5 block truncate text-sm text-ink/65">
+                  <span className="font-mono text-pine">{row.job.requisition_code}</span> · {row.job.title || "Untitled job"} · {row.job.location || "No city"}
                 </span>
-                <span className="flex flex-wrap items-center justify-end gap-3">
-                  {canBurden && row.burden_summary && <BurdenChip summary={row.burden_summary} />}
-                  <span className="text-sm text-ink/70">{money(row.salary_usd)}</span>
-                  <StageBadge stage={row.stage} label={row.stage_label} />
+                <span className="mt-1 block text-xs text-ink/50">
+                  Updated {when(row.updated_at)}
+                  {row.comment_count ? ` · ${row.comment_count} ${row.comment_count === 1 ? "comment" : "comments"}` : ""}
                 </span>
               </Link>
+              <span className="flex flex-wrap items-center justify-end gap-3">
+                {canBurden && row.burden_summary && <BurdenChip summary={row.burden_summary} />}
+                <span className="text-sm text-ink/70">{money(row.salary_usd)}</span>
+                <StageBadge stage={row.stage} label={row.stage_label} />
+                <Button asChild size="sm" variant="outline">
+                  <Link href={`/admin/review?job=${encodeURIComponent(row.job.requisition_code)}&candidate=${row.candidate.id}`}>Review</Link>
+                </Button>
+              </span>
             </li>
           ))}
         </ul>

@@ -7,13 +7,21 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { BackButton } from "@/components/back-button";
 import { copyText, shown } from "@/components/candidate-mail";
 import { Button } from "@/components/ui/button";
-import { Download } from "lucide-react";
+import { Download, FileSpreadsheet } from "lucide-react";
 
 import { downloadCsv, percent } from "@/lib/csv";
 import { readCache, writeCache } from "@/lib/page-cache";
+import { resumeFileUrl } from "@/lib/pipeline";
 
 type JobOption = { requisition_code: string; title: string | null; status: string };
-type CandidateOption = { id: string; full_name: string | null; original_filename: string | null; email: string | null; location: string | null };
+type CandidateOption = {
+  id: string;
+  full_name: string | null;
+  original_filename: string | null;
+  email: string | null;
+  location: string | null;
+  has_file?: boolean;
+};
 type Review = {
   job: { requisition_code: string; title: string | null; location: string | null };
   candidate: CandidateOption;
@@ -31,6 +39,15 @@ type Review = {
   mandatory_missing: string[];
   desired_matched: string[];
   desired_missing: string[];
+  mandatory_experience?: Experience[];
+  desired_experience?: Experience[];
+};
+type Experience = {
+  line: string;
+  years: number | null;
+  basis: "stated" | "roles" | "degree" | "partial" | null;
+  label: string;
+  detail: string;
 };
 type Outcome = { reviews: Review[]; failed: string[] };
 
@@ -79,6 +96,7 @@ function ReviewPage() {
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
+  const [sheetBusy, setSheetBusy] = useState(false);
   const [runCount, setRunCount] = useState(0);
 
   useEffect(() => setDraftJob(job), [job]);
@@ -130,7 +148,7 @@ function ReviewPage() {
       setOutcome(null);
       return;
     }
-    const cacheKey = `talent-review:${job}:${reviewedKey}`;
+    const cacheKey = `talent-review-v2:${job}:${reviewedKey}`;
     const saved = readCache<Outcome>(cacheKey);
     setOutcome(saved);
     setLoading(true);
@@ -191,14 +209,45 @@ function ReviewPage() {
   const emails = [...new Set(ranked.map((review) => (review.candidate.email || "").trim().toLowerCase()).filter((email) => email.includes("@")))];
   const dirty = draftJob !== job || picked.map((item) => item.id).join(",") !== reviewedKey;
 
+  async function downloadSheet() {
+    if (!jobInfo) return;
+    setSheetBusy(true);
+    setError("");
+    try {
+      const search = new URLSearchParams({ code: jobInfo.requisition_code, candidates: ranked.map((review) => review.candidate.id).join(",") });
+      const response = await fetch(`/api/admin/review/sheet?${search}`);
+      if (response.status === 401) {
+        router.push("/admin/login");
+        return;
+      }
+      if (!response.ok) {
+        setError("The submission spreadsheet could not be built.");
+        return;
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `submission-${jobInfo.requisition_code}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError("The submission spreadsheet could not be built.");
+    } finally {
+      setSheetBusy(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <div>
         <BackButton fallback="/admin/jobs" />
         <h1 className="page-title mt-2">Review a match</h1>
         <p className="page-lead">
-          Pick a job and one or more résumés, then press Review. With several résumés the list is ranked by mandatory coverage, and each row opens to show
-          the covered and missing posting lines.
+          Pick a job and one or more résumés, then press Review. Each covered requirement shows the years of experience estimated from that résumé.
+          Download the submission Excel when those years need to go on the spreadsheet.
         </p>
       </div>
 
@@ -339,6 +388,9 @@ function ReviewPage() {
             </div>
             {ranked.length > 0 && (
               <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" onClick={downloadSheet} disabled={sheetBusy}>
+                  <FileSpreadsheet /> {sheetBusy ? "Building…" : "Submission Excel"}
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
@@ -346,7 +398,7 @@ function ReviewPage() {
                   onClick={() =>
                     downloadCsv(
                       `review-${jobInfo.requisition_code}.csv`,
-                      ["Rank", "Name", "Email", "Location", "Mandatory", "Desired", "Strong match", "Missing mandatory"],
+                      ["Rank", "Name", "Email", "Location", "Mandatory", "Desired", "Strong match", "Requirements met, with years", "Missing mandatory"],
                       ranked.map((review, index) => [
                         index + 1,
                         review.candidate.full_name,
@@ -355,12 +407,13 @@ function ReviewPage() {
                         percent(review.mandatory_pct),
                         percent(review.desired_pct),
                         review.meets_bar ? "yes" : "no",
+                        metSummary(review),
                         review.mandatory_missing.join("; "),
                       ]),
                     )
                   }
                 >
-                  <Download /> Export CSV
+                  <Download /> CSV
                 </Button>
                 <Button
                   type="button"
@@ -408,6 +461,11 @@ function ReviewPage() {
   );
 }
 
+function canDownload(candidate: CandidateOption): boolean {
+  if (candidate.has_file === false) return false;
+  return Boolean(candidate.has_file || candidate.original_filename);
+}
+
 function ReviewRow({ review, position, open, onToggle }: { review: Review; position: number | null; open: boolean; onToggle: () => void }) {
   const name = review.candidate.full_name || "Unnamed résumé";
   return (
@@ -422,12 +480,28 @@ function ReviewRow({ review, position, open, onToggle }: { review: Review; posit
             <Link href={`/admin/match?id=${review.candidate.id}`} className="text-xs text-pine hover:underline">
               Rank
             </Link>
+            <Link
+              href={`/admin/resume-update?job=${encodeURIComponent(review.job.requisition_code)}&candidate=${review.candidate.id}`}
+              className="text-xs font-medium text-pine hover:underline"
+            >
+              Update résumé
+            </Link>
+            {canDownload(review.candidate) && (
+              <a
+                href={resumeFileUrl(review.candidate.id, true)}
+                title={review.candidate.original_filename || "Download résumé"}
+                className="inline-flex items-center gap-1 text-xs font-medium text-pine hover:underline"
+              >
+                <Download className="size-3.5" /> Download résumé
+              </a>
+            )}
             {review.meets_bar && <span className="rounded-full bg-pine/10 px-2 py-0.5 text-xs font-medium text-pine">Strong match</span>}
           </div>
           <p className="truncate text-xs text-ink/70">
             {shown(review.candidate.email)} · {shown(review.candidate.location)}
             {review.candidate.original_filename ? ` · ${review.candidate.original_filename}` : ""}
           </p>
+          {!open && <ExperienceChips items={[...(review.mandatory_experience || []), ...(review.desired_experience || [])]} />}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <ScorePill label="Mandatory" percent={review.mandatory_pct} hit={review.mandatory_hit} total={review.mandatory_total} strong={review.meets_bar} />
@@ -448,7 +522,7 @@ function ReviewRow({ review, position, open, onToggle }: { review: Review; posit
           )}
           <div className="mt-3 grid gap-4 sm:grid-cols-2">
             <LineList title="Missing mandatory" lines={review.mandatory_missing} empty="No mandatory lines are missing." />
-            <LineList title="Covered mandatory" lines={review.mandatory_matched} empty="No mandatory lines are covered." />
+            <LineList title="Covered mandatory" lines={review.mandatory_matched} experience={review.mandatory_experience} empty="No mandatory lines are covered." />
             <LineList
               title="Missing desired"
               lines={review.desired_missing}
@@ -457,6 +531,7 @@ function ReviewRow({ review, position, open, onToggle }: { review: Review; posit
             <LineList
               title="Covered desired"
               lines={review.desired_matched}
+              experience={review.desired_experience}
               empty={review.desired_total === 0 ? "This posting has no desired skills." : "No desired lines are covered."}
             />
           </div>
@@ -476,17 +551,61 @@ function ScorePill({ label, percent, hit, total, strong }: { label: string; perc
   );
 }
 
-function LineList({ title, lines, empty }: { title: string; lines: string[]; empty: string }) {
+function metSummary(review: Review): string {
+  return [...(review.mandatory_experience || []), ...(review.desired_experience || [])]
+    .map((item) => `${item.line} (${item.label})`)
+    .join("; ");
+}
+
+function shortRequirement(line: string): string {
+  const cut = line.split(/[:.]/)[0].trim();
+  return cut.length > 48 ? `${cut.slice(0, 46)}…` : cut;
+}
+
+function ExperienceChips({ items }: { items: Experience[] }) {
+  if (items.length === 0) return null;
+  const shown = items.slice(0, 4);
+  const rest = items.length - shown.length;
+  return (
+    <ul className="mt-2 flex flex-wrap gap-1.5">
+      {shown.map((item) => (
+        <li key={item.line} title={item.detail} className="max-w-full rounded-full bg-desk px-2 py-0.5 text-[11px] leading-5 text-ink/75">
+          <span className="text-ink/55">{shortRequirement(item.line)}</span>
+          <span className={`ml-1 font-medium ${item.years == null && item.basis !== "degree" ? "text-ink/45" : "text-pine"}`}>{item.label}</span>
+        </li>
+      ))}
+      {rest > 0 && <li className="self-center text-[11px] text-ink/45">+{rest} more in details</li>}
+    </ul>
+  );
+}
+
+function LineList({ title, lines, experience, empty }: { title: string; lines: string[]; experience?: Experience[]; empty: string }) {
+  const byLine = new Map((experience || []).map((item) => [item.line, item]));
   return (
     <div>
       <h3 className="text-sm font-medium">{title}</h3>
       {lines.length === 0 ? (
         <p className="mt-1 text-sm text-ink/60">{empty}</p>
       ) : (
-        <ul className="mt-1 flex list-disc flex-col gap-1 pl-5 text-sm leading-6">
-          {lines.map((line) => (
-            <li key={line}>{line}</li>
-          ))}
+        <ul className="mt-1 flex list-disc flex-col gap-1.5 pl-5 text-sm leading-6">
+          {lines.map((line) => {
+            const item = byLine.get(line);
+            return (
+              <li key={line}>
+                <span>{line}</span>
+                {item && (
+                  <span
+                    title={item.detail}
+                    className={`ml-2 inline-flex rounded-full px-2 py-0.5 align-middle text-xs font-medium ${
+                      item.years == null && item.basis !== "degree" ? "bg-desk text-ink/50" : "bg-pine/10 text-pine"
+                    }`}
+                  >
+                    {item.label}
+                  </span>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
