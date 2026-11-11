@@ -2,15 +2,16 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Check, Copy, Download, ExternalLink, X } from "lucide-react";
+import { Check, Download, ExternalLink, X } from "lucide-react";
 
+import { CandidateActions } from "@/components/candidate-actions";
 import { copyText } from "@/components/candidate-mail";
 import { SectionBody } from "@/components/knowledge/section-view";
 import { StageBadge } from "@/components/stage-badge";
 import { downloadCsv } from "@/lib/csv";
 import type { Block, CandidateRow, JobRow, RankedRow, SubmissionRow } from "@/lib/assistant";
 import { money } from "@/lib/assistant";
-import { resumeFileUrl } from "@/lib/pipeline";
+import { resumeFileUrl, resumeUpdateHref, reviewHref } from "@/lib/pipeline";
 
 const PREVIEW = 6;
 
@@ -48,16 +49,17 @@ function CopyEmails({ rows }: { rows: { email: string | null }[] }) {
   const emails = [...new Set(rows.map((row) => (row.email || "").trim().toLowerCase()).filter((email) => email.includes("@")))];
   if (!emails.length) return null;
   return (
-    <IconAction
-      label={`Copy ${emails.length} email${emails.length === 1 ? "" : "s"}`}
+    <button
+      type="button"
+      className="text-[11px] font-medium text-pine hover:underline"
       onClick={() => {
         copyText(emails.join(", "));
         setDone(true);
         setTimeout(() => setDone(false), 1500);
       }}
     >
-      {done ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
-    </IconAction>
+      {done ? "Copied" : `Copy ${emails.length} email${emails.length === 1 ? "" : "s"}`}
+    </button>
   );
 }
 
@@ -70,7 +72,7 @@ function More({ total, open, toggle }: { total: number; open: boolean; toggle: (
   );
 }
 
-function CandidatesBlock({ block }: { block: Extract<Block, { type: "candidates" }> }) {
+function CandidatesBlock({ block, jobCode }: { block: Extract<Block, { type: "candidates" }>; jobCode?: string }) {
   const [open, setOpen] = useState(false);
   const rows = open ? block.rows : block.rows.slice(0, PREVIEW);
   return (
@@ -113,6 +115,7 @@ function CandidatesBlock({ block }: { block: Extract<Block, { type: "candidates"
                   {[row.titles?.[0], (row.skills || []).slice(0, 5).join(", ")].filter(Boolean).join(" · ")}
                 </p>
               ) : null}
+              <CandidateActions id={row.id} job={jobCode} />
             </li>
           ))}
         </ul>
@@ -163,21 +166,21 @@ function RankedBlock({ block }: { block: Extract<Block, { type: "ranked" }> }) {
       ) : (
         <ul className="divide-y divide-line">
           {rows.map((row: RankedRow) => (
-            <li key={row.id} className="flex items-center gap-2 px-3 py-2">
-              <span className={`w-12 shrink-0 rounded-md border px-1 py-0.5 text-center text-xs font-semibold tabular-nums ${pctTone(row.mandatory_pct, row.meets_bar)}`}>
-                {row.mandatory_pct == null ? "–" : `${row.mandatory_pct}%`}
-              </span>
-              <div className="min-w-0 flex-1">
-                <Link href={`/admin/candidates/${row.id}`} className="block truncate text-sm font-medium text-ink hover:text-pine hover:underline">
-                  {row.name}
-                </Link>
-                <p className="truncate text-[11px] text-ink/50">
-                  {row.location || "No location"} · mandatory {row.mandatory} · desired {row.desired}
-                </p>
+            <li key={row.id} className="px-3 py-2">
+              <div className="flex items-center gap-2">
+                <span className={`w-12 shrink-0 rounded-md border px-1 py-0.5 text-center text-xs font-semibold tabular-nums ${pctTone(row.mandatory_pct, row.meets_bar)}`}>
+                  {row.mandatory_pct == null ? "–" : `${row.mandatory_pct}%`}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <Link href={`/admin/candidates/${row.id}`} className="block truncate text-sm font-medium text-ink hover:text-pine hover:underline">
+                    {row.name}
+                  </Link>
+                  <p className="truncate text-[11px] text-ink/50">
+                    {row.location || "No location"} · mandatory {row.mandatory} · desired {row.desired}
+                  </p>
+                </div>
               </div>
-              <Link href={`/admin/review?job=${block.code}&candidate=${row.id}`} className="shrink-0 text-[11px] font-medium text-pine hover:underline">
-                Review
-              </Link>
+              <CandidateActions id={row.id} job={block.code} />
             </li>
           ))}
         </ul>
@@ -247,6 +250,12 @@ function SubmissionsBlock({ block }: { block: Extract<Block, { type: "submission
                 </p>
               </div>
               <StageBadge stage={row.stage_key} label={row.stage} />
+              <Link href={reviewHref(row.code, row.candidate_id)} className="shrink-0 text-[11px] font-medium text-pine hover:underline">
+                Review
+              </Link>
+              <Link href={resumeUpdateHref(row.code, row.candidate_id)} className="shrink-0 text-[11px] font-medium text-pine hover:underline">
+                Update résumé
+              </Link>
             </li>
           ))}
         </ul>
@@ -316,13 +325,9 @@ function FitBlock({ block }: { block: Extract<Block, { type: "fit" }> }) {
   return (
     <Shell
       title={`${fit.candidate} · ${fit.code} ${fit.title || ""}`}
-      actions={
-        <Link href={`/admin/review?job=${fit.code}&candidate=${fit.candidate_id}`} className="text-[11px] font-medium text-pine hover:underline">
-          Review
-        </Link>
-      }
     >
       <div className="space-y-2 px-3 py-2.5">
+        <CandidateActions id={fit.candidate_id} job={fit.code} />
         <div className="flex items-center gap-2">
           <span className={`rounded-md border px-2 py-0.5 text-sm font-semibold tabular-nums ${pctTone(fit.mandatory_pct, fit.meets_bar)}`}>
             {fit.mandatory_pct == null ? "–" : `${fit.mandatory_pct}%`}
@@ -516,12 +521,12 @@ function DocumentsBlock({ block }: { block: Extract<Block, { type: "documents" }
   );
 }
 
-export function ResultBlock({ block }: { block: Block }) {
+export function ResultBlock({ block, jobCode }: { block: Block; jobCode?: string }) {
   switch (block.type) {
     case "documents":
       return <DocumentsBlock block={block} />;
     case "candidates":
-      return <CandidatesBlock block={block} />;
+      return <CandidatesBlock block={block} jobCode={jobCode} />;
     case "ranked":
       return <RankedBlock block={block} />;
     case "jobs":

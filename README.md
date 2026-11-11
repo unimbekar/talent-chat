@@ -32,23 +32,33 @@ Check comes first. The import starts only after the page has shown how many peop
 
 Offer letters and invoices stay out. A second import of the same person updates the record. Nothing is emailed.
 
-## Screens
+## A look at the product
 
-The public page is a single conversation. The examples under the headline are real questions the matcher answers.
+The careers page is the front door. A visitor browses every open role, asks a question in ordinary language, and applies with a résumé. Admin sign in and Recruiter sign in are separate doors. A visitor never reaches the desk, and the desk never answers from the public page.
 
-![Careers chat](docs/diagrams/chat-empty.png)
+![The careers page](docs/screens/careers-board.png)
 
-After the question, the summary is on screen at once. The card is the evidence.
+The board is the catalog. Each card has the title, the requisition code, the city, and a short excerpt from the posting. Apply starts an application. Full description opens the posting. Ask about this sends that role to the panel on the right. The examples there are real questions: a skill, a city, or a company document such as benefits.
 
-![Spring Boot answer](docs/diagrams/chat-answer.png)
+![Open jobs](docs/screens/careers-jobs.png)
 
-The recruiter desk uses the same quiet type, on a dark bar. A job page is where a résumé earns its place: the mandatory lines it covers, the lines it misses, and a checkbox for the address. Copy does not send mail.
+Full description is the posting itself. Mandatory lines and desired lines are listed under the narrative. Clearance wording is shown to the visitor. When a résumé is scored, that wording is not treated as a skill.
 
-![Review a match](docs/diagrams/job-match.png)
+![A job posting](docs/screens/job-detail.png)
 
-Ingest is the third screen a recruiter lives on. Three sources, one rule: the newest résumé for each person.
+Apply reads the résumé before anything is stored. The score is the share of required lines the file actually shows. Missing lines come first. For a line the résumé does not show, the candidate can write a full sentence about how they meet it, or leave the box blank. A few words are refused so they can rewrite the sentence or clear it. The application still goes through when every box is blank. The résumé is kept only when they submit, and only when they attest a current TS/SCI with a Full Scope Polygraph.
 
-![Ingest from S3](docs/diagrams/ingest.png)
+![Matching a résumé while applying](docs/screens/apply-match.png)
+
+The recruiter desk is the other room. An admin and a recruiter sign in through different doors. The public page cannot open either one.
+
+![Desk sign in](docs/screens/desk-signin.png)
+
+After sign-in, Jobs is the list of open postings. The title and Details both open that requisition, for an admin and for a recruiter. The posting is the same description candidates read before they apply. A copy icon puts that description and the public apply link on the clipboard for an email. The page forms a LinkedIn search that always requires TS/SCI and a full-scope polygraph, plus the role words and city, and opens it in the browser where a Recruiter seat is already signed in. A pasted profile link is saved on that job.
+
+Review is the next step wherever a person is tied to a job: on the pipeline, on a job, on a submission, on a candidate’s profile, and in reports. It shows the lines the résumé covers, the years of experience read from that résumé, and the lines still missing. A sentence the candidate wrote at apply is already filled in. An admin or a recruiter can edit those sentences and download a résumé that includes them. The file the candidate uploaded is not changed.
+
+Pipeline is one person sent for one job, from Submitted through salary and interview to Selected. Each row has Review. When everyone in the current list is for one job, Review at the top compares that whole list. Find asks for people in plain words. Match ranks one résumé against open jobs. Ingest keeps the newest résumé for each person. None of these screens are on the public site, and none of them send mail when you copy an address.
 
 | File | What it is |
 | --- | --- |
@@ -69,18 +79,19 @@ Ingest is the third screen a recruiter lives on. Three sources, one rule: the ne
 | [publish_cloudflare.md](publish_cloudflare.md) | Publish at `talent.janus-soft.com` with Cloudflare, or on the public Tailscale Funnel address. DNS move, Tunnel from the Spark or a small server, Access for `/admin`, and the Google Sites button. |
 | [PRODUCT.md](PRODUCT.md) | Selling Talent Chat to other firms: features, branding settings, onboarding, gaps to close, pricing, and roadmap. |
 | [PROMPT.md](PROMPT.md) | The original Phase 1 kickoff. The application is already in this repository. |
+| `docs/screens/` | Screenshots of the careers page, a posting, résumé matching at apply, and desk sign-in. The pictures do not include salary figures. |
 | `docs/diagrams/` | Diagram sources (`.mmd`) and rendered PNGs. Re-render with `scripts/render-diagrams.sh`. |
 | `tests/fixtures/careers/` | Snapshot of the live listing and detail pages (2026-09-27), used as parser fixtures. |
 
 ## Public chat
 
-Open `/jobs`. The page lists every open job. `/chat` still opens this page. Ask the Desk, on the side, answers questions about those postings: a skill, a city, or a requisition code. Follow-up questions keep the earlier turns. The answer and the job cards come from the postings on file. A question such as “Which jobs require Spring Boot?” is matched against each posting’s requirement lines. A line that says the tool is excluded does not count. Related wording counts and is shown on the card, so a posting that requires Spring Framework is listed, with that sentence visible. Closed postings that name the tool are listed separately and marked closed. The assistant does not search candidates, emails, or phone numbers. A question about a company document, such as benefits, onboarding, or a procedure, is answered from the knowledge base instead of the job list. Those documents are uploaded on the recruiter desk under Knowledge. Documents marked internal are not shown to careers visitors. See [KNOWLEDGE.md](KNOWLEDGE.md).
+Open `/jobs`. The page lists every open job, as in [A look at the product](#a-look-at-the-product). `/chat` still opens this page. Ask the Desk, on the side, answers questions about those postings: a skill, a city, or a requisition code. Follow-up questions keep the earlier turns. The answer and the job cards come from the postings on file. A question such as “Which jobs require Spring Boot?” is matched against each posting’s requirement lines. A line that says the tool is excluded does not count. Related wording counts and is shown on the card, so a posting that requires Spring Framework is listed, with that sentence visible. Closed postings that name the tool are listed separately and marked closed. The assistant does not search candidates, emails, or phone numbers. A question about a company document, such as benefits, onboarding, or a procedure, is answered from the knowledge base instead of the job list. Those documents are uploaded on the recruiter desk under Knowledge. Documents marked internal are not shown to careers visitors. See [KNOWLEDGE.md](KNOWLEDGE.md).
 
 ## Recruiter desk
 
-Sign in at `/admin`. The header links are Jobs, Candidates, Pipeline, Reports, Ingest, Knowledge, Find, Match, and Review. Find is described in [Find candidates](#find-candidates). Ingest is described in [Ingest résumés](#ingest-résumés). Submissions are described in [Submission pipeline](#submission-pipeline). Reports are described in [Reports](#reports).
+Sign in at `/admin`. The header is Dashboard, Jobs, Candidates, Pipeline, Review, and Update résumé. More holds Find, Match, Reports, Ingest, Knowledge, and the rest. Find is described in [Find candidates](#find-candidates). Ingest is described in [Ingest résumés](#ingest-résumés). Submissions are described in [Submission pipeline](#submission-pipeline). Reports are described in [Reports](#reports).
 
-- **Jobs.** Open postings from the careers crawl. Each job page shows the full description, the mandatory and desired lines from the posting, and résumés that cover at least 50% of the mandatory lines. Each matching candidate shows an email and a location, or “unknown” when either is missing. Check the people you want, then copy their addresses as a comma-separated list. Nothing is sent. Close a job with a note that explains why. Closed jobs stay closed when the careers page is crawled again, and the note stays with the job so you can read it later. Reopen puts the job back on the open list. A posting that disappears from the careers page is closed with the note “No longer listed on the careers page.”
+- **Jobs.** Open postings from the careers crawl. On the Jobs page, the title and Details both open that job. The page opens on the same description candidates read, with a copy button for email, then a LinkedIn query that always requires TS/SCI and a full-scope polygraph. The recruiter can edit the role words and open that search in their own signed-in browser. A pasted profile link is saved on that job. Requirements an admin can edit come next, then the people submitted for it and the résumés that cover at least 50% of the mandatory lines. Each matching candidate shows an email and a location, or “unknown” when either is missing. Check the people you want, then copy their addresses as a comma-separated list. Nothing is sent. Close a job with a note that explains why. Closed jobs stay closed when the careers page is crawled again, and the note stays with the job so you can read it later. Reopen puts the job back on the open list. A posting that disappears from the careers page is closed with the note “No longer listed on the careers page.”
 - **Candidates.** The newest résumé on file for each person, with search and pages. Each row shows email and location, or “unknown”. Copy the addresses on the current page, copy every address in the desk as one comma-separated list, or check a few people and copy only those. Duplicate addresses are left out. Nothing is sent. A name opens that person’s profile: every job they have been submitted for, and notes that follow them.
 - **Pipeline.** A submission is one person sent for one job. The stages are Submitted, Salary, Interviewed, Offer, and Selected. Rejected and Withdrawn end it and stay on the history. Salary is stored on that submission, so the same person can have a different number on another job. Comments sit on the submission and, separately, on the person. Delete removes a mistake. Withdraw keeps the record.
 - **Reports.** Today, the last 7 days, the last 30 days, or a custom range. The page counts résumés ingested, submissions opened, and selected, rejected, or withdrawn moves. It lists people with a full-scope polygraph (FSP) or another clearance filter, and submissions whose recorded salary is greater than an amount you type. Charts cover daily activity, stage mix, clearance mix, salary bands, and the live pipeline. Export one list as CSV or the whole report as an Excel workbook.

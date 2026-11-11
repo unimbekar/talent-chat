@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ExternalLink, MapPin, MessageCircle, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { postingBlocks } from "@/lib/posting";
 
 type Posting = {
   requisition_code: string;
@@ -13,28 +14,6 @@ type Posting = {
   description_note: string | null;
   source_url: string | null;
 };
-
-type Block = { kind: "heading" | "item" | "text"; text: string };
-
-const LIST_SECTION = /skill|qualification|requirement|responsibilit|desired|duties|experience|education/i;
-
-const HEADING_WORDS = /skill|qualification|requirement|responsibilit|duties|overview|description|education|about|benefit|summary/i;
-
-function isHeading(text: string, listing: boolean): boolean {
-  if (text.length > 60 || /[.:;!?]$/.test(text) || text.includes(": ")) return false;
-  return !listing || HEADING_WORDS.test(text);
-}
-
-function blocks(paragraphs: string[]): Block[] {
-  let listing = false;
-  return paragraphs.map((text) => {
-    if (isHeading(text, listing)) {
-      listing = LIST_SECTION.test(text);
-      return { kind: "heading", text };
-    }
-    return { kind: listing ? "item" : "text", text };
-  });
-}
 
 function Labeled({ text }: { text: string }) {
   const split = text.match(/^([^:]{2,40}):\s+([\s\S]+)$/);
@@ -135,7 +114,7 @@ export function JobDetailDialog({
           {posting?.description_note && <p className="text-sm text-white/60">{posting.description_note}</p>}
           {posting && posting.paragraphs.length > 0 && (
             <div className="space-y-2 text-sm leading-6 text-white/75">
-              {blocks(posting.paragraphs).map((block, index) =>
+              {postingBlocks(posting.paragraphs).map((block, index) =>
                 block.kind === "heading" ? (
                   <h3 key={index} className="pt-3 text-lg font-medium tracking-tight text-white first:pt-0">
                     {block.text}

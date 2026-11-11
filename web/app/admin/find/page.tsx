@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ClipboardCheck, Download } from "lucide-react";
 
+import { SkillSearch, SkillYears, type SkillNeed, type SkillYear } from "@/components/skill-search";
 import { downloadCsv } from "@/lib/csv";
 import { reviewHref } from "@/lib/pipeline";
 import { writeCache } from "@/lib/page-cache";
@@ -22,6 +23,7 @@ type Person = {
   location: string | null;
   titles: string[];
   skills: string[];
+  skill_years?: SkillYear[];
 };
 
 type StateRef = { code: string; name: string };
@@ -65,6 +67,7 @@ export default function FindPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [copyNote, setCopyNote] = useState("");
   const [restored, setRestored] = useState(false);
+  const [skillBusy, setSkillBusy] = useState(false);
 
   useEffect(() => {
     const raw = sessionStorage.getItem(STORAGE_KEY);
@@ -115,6 +118,41 @@ export default function FindPage() {
     }
   }
 
+  async function searchSkills(skills: SkillNeed[]) {
+    setSkillBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/admin/candidates/skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skills: skills.map((skill) => ({ name: skill.name, min_years: skill.minYears })) }),
+      });
+      if (response.status === 401) {
+        router.push("/admin/login");
+        return;
+      }
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data || !Array.isArray(data.candidates)) {
+        setError(typeof data?.detail === "string" ? data.detail : "The skill search did not complete.");
+        return;
+      }
+      setResult({
+        answer: data.answer,
+        categories: [],
+        candidates: data.candidates.map((person: Person) => ({
+          ...person,
+          titles: person.titles || [],
+          skills: (person.skill_years || []).map((row) => row.name),
+        })),
+      });
+      setSelected(new Set());
+    } catch {
+      setError("The skill search did not complete.");
+    } finally {
+      setSkillBusy(false);
+    }
+  }
+
   function reviewSelected() {
     const people = (result?.candidates || []).filter((person) => selected.has(person.id));
     writeCache(
@@ -138,9 +176,14 @@ export default function FindPage() {
         <p className="mt-1 max-w-2xl text-sm text-ink/70">
           Ask in plain words for a role, a skill, and where people live, such as ServiceNow people in Maryland, Software
           Testers, or Java developers outside Virginia. The filters used are shown above the list. Emails stay on this
-          desk so you can copy them. Nothing is sent.
+          desk so you can copy them. Nothing is sent. Or add skills one at a time, with a minimum number of years when
+          you need one. Each match shows the years on file for those skills.
         </p>
       </div>
+      <section className="panel flex flex-col gap-3 p-4">
+        <h2 className="font-serif text-xl">Skills</h2>
+        <SkillSearch onSearch={searchSkills} busy={skillBusy} />
+      </section>
       <form onSubmit={onSubmit} className="flex flex-col gap-2">
         <label className="text-sm" htmlFor="ask">
           Question
@@ -262,7 +305,11 @@ export default function FindPage() {
                     <p className="text-xs text-ink/60">{person.titles.join(", ")}</p>
                     <p className="text-xs text-ink/80">Email: {shown(person.email)}</p>
                     <p className="text-xs text-ink/80">Location: {shown(person.location)}</p>
-                    {person.skills.length > 0 && <p className="mt-1 text-xs text-ink/50">{person.skills.join(" · ")}</p>}
+                    {person.skill_years && person.skill_years.length > 0 ? (
+                      <SkillYears rows={person.skill_years} />
+                    ) : person.skills.length > 0 ? (
+                      <p className="mt-1 text-xs text-ink/50">{person.skills.join(" · ")}</p>
+                    ) : null}
                   </div>
                 </div>
                 {person.email ? (

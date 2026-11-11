@@ -423,6 +423,22 @@ class SiteVisit(Base):
     device: Mapped[str] = mapped_column(Text, default="desktop")
 
 
+class LinkedInLead(Base):
+    """A person a recruiter pasted from a LinkedIn search they ran in their own browser."""
+
+    __tablename__ = "linkedin_leads"
+    __table_args__ = (UniqueConstraint("job_id", "profile_url"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    full_name: Mapped[str] = mapped_column(Text)
+    profile_url: Mapped[str] = mapped_column(Text)
+    headline: Mapped[str] = mapped_column(Text, default="", server_default="")
+    note: Mapped[str] = mapped_column(Text, default="", server_default="")
+    created_by: Mapped[str] = mapped_column(Text, default="", server_default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class CrawlState(Base):
     __tablename__ = "crawl_state"
 

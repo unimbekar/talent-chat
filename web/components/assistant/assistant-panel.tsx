@@ -380,7 +380,7 @@ export function AssistantPanel({ mode, onMode }: { mode: PanelMode; onMode: (mod
             <div key={index} className="animate-fade-up space-y-2.5">
               <Steps message={message} />
               {message.blocks.map((block, blockIndex) => (
-                <ResultBlock key={blockIndex} block={block} />
+                <ResultBlock key={blockIndex} block={block} jobCode={context.code} />
               ))}
               {message.content ? (
                 <AnswerText text={message.content} blocks={message.blocks} />

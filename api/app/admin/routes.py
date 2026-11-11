@@ -40,7 +40,7 @@ from app.admin.google_auth import (
 )
 from app.admin.remote_ingest import RemoteIngestError, materialize_drive, materialize_s3
 from app.admin.candidate_repository import by_hash, delete_candidate, get_candidate
-from app.admin.find import describe, find_candidates
+from app.admin.find import canonical_skill, describe, describe_skill_search, find_candidates, search_by_skills
 from app.admin.folder_ingest import ingest_status, library_folder, preferred_name, scan_resumes, start_ingest
 from app.admin.rank import _posting_lines, embed_candidate, rank_jobs
 from app.core.score import MANDATORY_BAR, gate_mandatory, section_coverage
@@ -58,7 +58,8 @@ from app.core.structure import skills_from_quotes
 from app.core.structure import parse_resume_profile, structure_job
 from app.core.tokens import chunk_text, job_vector_text
 from app.db import get_admin_db
-from app.models import AdminSession, AuditLog, CrawlState, DeskUser, Job, JobChunk, Match, RemovedJob, SkillSynonym
+from app.core.posting import linkedin_links, linkedin_profile_url, posting_paragraphs
+from app.models import AdminSession, AuditLog, CrawlState, DeskUser, Job, JobChunk, LinkedInLead, Match, RemovedJob, SkillSynonym
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 logger = logging.getLogger(__name__)
@@ -85,6 +86,15 @@ class JobEdit(BaseModel):
 
 class AskIn(BaseModel):
     message: str
+
+
+class SkillNeedIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    min_years: float | None = Field(default=None, ge=0, le=40)
+
+
+class SkillSearchIn(BaseModel):
+    skills: list[SkillNeedIn] = Field(min_length=1, max_length=12)
 
 
 class ConfirmIn(BaseModel):
@@ -363,6 +373,73 @@ def get_job(code: str, session: Session = Depends(require_desk)):
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found.")
     return _job_out(job)
+
+
+class LinkedInLeadIn(BaseModel):
+    full_name: str = Field(min_length=2, max_length=120)
+    profile_url: str = Field(min_length=12, max_length=500)
+    headline: str = Field(default="", max_length=200)
+    note: str = Field(default="", max_length=2000)
+
+
+def _lead_out(lead: LinkedInLead) -> dict:
+    return {
+        "id": str(lead.id),
+        "full_name": lead.full_name,
+        "profile_url": lead.profile_url,
+        "headline": lead.headline,
+        "note": lead.note,
+        "created_by": lead.created_by,
+        "created_at": lead.created_at.isoformat() if lead.created_at else None,
+    }
+
+
+def _job_for_code(session: Session, code: str) -> Job:
+    job = session.scalar(select(Job).where(Job.requisition_code == code))
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    return job
+
+
+@router.get("/jobs/{code}/linkedin")
+def list_linkedin_leads(code: str, session: Session = Depends(require_desk)):
+    job = _job_for_code(session, code)
+    leads = session.scalars(
+        select(LinkedInLead).where(LinkedInLead.job_id == job.id).order_by(LinkedInLead.created_at.desc())
+    ).all()
+    return {**linkedin_links(job), "leads": [_lead_out(lead) for lead in leads]}
+
+
+@router.post("/jobs/{code}/linkedin")
+def save_linkedin_lead(code: str, body: LinkedInLeadIn, session: Session = Depends(require_desk)):
+    job = _job_for_code(session, code)
+    try:
+        profile_url = linkedin_profile_url(body.profile_url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    lead = session.scalar(
+        select(LinkedInLead).where(LinkedInLead.job_id == job.id, LinkedInLead.profile_url == profile_url)
+    )
+    if lead is None:
+        lead = LinkedInLead(job_id=job.id, profile_url=profile_url, created_by=actor_of(session))
+        session.add(lead)
+    lead.full_name = body.full_name.strip()
+    lead.headline = body.headline.strip()
+    lead.note = body.note.strip()
+    session.commit()
+    session.refresh(lead)
+    return _lead_out(lead)
+
+
+@router.delete("/jobs/{code}/linkedin/{lead_id}")
+def delete_linkedin_lead(code: str, lead_id: uuid.UUID, session: Session = Depends(require_desk)):
+    job = _job_for_code(session, code)
+    lead = session.scalar(select(LinkedInLead).where(LinkedInLead.id == lead_id, LinkedInLead.job_id == job.id))
+    if lead is None:
+        raise HTTPException(status_code=404, detail="That LinkedIn profile is not saved on this job.")
+    session.delete(lead)
+    session.commit()
+    return {"ok": True}
 
 
 @router.get("/jobs/{code}/candidates")
@@ -1067,6 +1144,39 @@ def ask_candidates(body: AskIn, request: Request, session: Session = Depends(req
     }
 
 
+@router.post("/candidates/skills")
+def search_candidates_by_skills(body: SkillSearchIn, session: Session = Depends(require_desk)):
+    """Every listed skill is required. A minimum year count drops people below it or with no number on file."""
+    needs: list[tuple[str, float | None]] = []
+    seen: set[str] = set()
+    try:
+        for item in body.skills:
+            name = canonical_skill(item.name)
+            key = name.lower()
+            if key in seen:
+                raise ValueError(f"{name} is already in the list.")
+            seen.add(key)
+            needs.append((name, item.min_years))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    people, measured = search_by_skills(session, needs)
+    return {
+        "answer": describe_skill_search(needs, len(people)),
+        "skills": [{"name": name, "min_years": minimum} for name, minimum in needs],
+        "candidates": [
+            {
+                "id": str(row.id),
+                "full_name": _person_name(row),
+                "email": row.email,
+                "location": row.location,
+                "titles": list(row.titles or []),
+                "skill_years": years,
+            }
+            for row, years in zip(people, measured, strict=True)
+        ],
+    }
+
+
 @router.get("/resumes/{candidate_id}")
 def get_resume(candidate_id: uuid.UUID, session: Session = Depends(require_desk)):
     candidate = get_candidate(session, candidate_id)
@@ -1262,6 +1372,8 @@ def _job_out(job: Job) -> dict:
         "needs_review": job.needs_review,
         "description_source": job.description_source,
         "description_text": job.description_text,
+        "posting_paragraphs": posting_paragraphs(job),
+        "linkedin": linkedin_links(job),
         "description_note": None if (job.description_text or "").strip() else "Full description not on file.",
         "must_have_skills": job.must_have_skills or [],
         "nice_to_have_skills": job.nice_to_have_skills or [],

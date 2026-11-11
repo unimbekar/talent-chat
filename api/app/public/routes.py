@@ -18,6 +18,7 @@ from app.knowledge.intent import job_part, names_job, wants_knowledge, wants_pol
 from app.knowledge.store import is_follow_up, topic_terms
 from app.core.llm import LLMError, parse_json_content
 from app.db import admin_session, public_session
+from app.core.posting import posting_paragraphs as _posting_paragraphs
 from app.models import Job
 from app.notify import send_application_notice
 from app.push import send_application_push
@@ -114,23 +115,6 @@ def list_jobs():
         return JSONResponse({"message": "The job list is unavailable right now.", "jobs": []}, status_code=503)
     finally:
         db.close()
-
-
-def _posting_paragraphs(job: Job) -> list[str]:
-    """The careers-page posting split into paragraphs, without the page chrome the crawl picked up."""
-    paragraphs: list[str] = []
-    seen: set[str] = set()
-    title = (job.title or "").strip().lower()
-    for raw in re.split(r"\n\s*\n|\n", job.careers_description_text or ""):
-        text = re.sub(r"[ \t]+", " ", raw).strip()
-        key = text.lower()
-        if not text or key in seen:
-            continue
-        seen.add(key)
-        if not paragraphs and (key in {"career", "careers"} or (title and key.startswith(title) and len(text) < 120)):
-            continue
-        paragraphs.append(text)
-    return paragraphs
 
 
 @router.get("/jobs/{requisition_code}")

@@ -9,12 +9,14 @@ dropped. When the model is down, a rule parser reads the same filters.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 import re
 
 from sqlalchemy import String, and_, cast, func, or_, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.expression import nullslast
 
+from app.core.experience import employment_stints, skill_years
 from app.core.labor import categories_for_question
 from app.core.llm import LLMClient, LLMError, parse_json_content
 from app.core.skills import aliases_for, find_canonicals, normalize_skill_list
@@ -265,6 +267,89 @@ def run_filters(session: Session, filters: Filters, question: str, extra: list |
         stmt = stmt.where(Candidate.state.is_not(None), Candidate.state.not_in(filters.exclude_states))
     rows = session.scalars(stmt.order_by(nullslast(func.lower(Candidate.full_name))).limit(RESULT_LIMIT)).all()
     return FindResult(rows=list(rows), filters=filters, unknown_location=unknown, fallback=False)
+
+
+def canonical_skill(raw: str) -> str:
+    """One skill name. A phrase that names two tools is refused so each row stays one skill."""
+    text = re.sub(r"\s+", " ", (raw or "")).strip()
+    if not text or len(text) > 80:
+        raise ValueError("Enter one skill.")
+    found = find_canonicals(text)
+    if len(found) > 1 and text.lower() not in {name.lower() for name in found}:
+        raise ValueError(f"Enter one skill at a time. {text} names {', '.join(found)}.")
+    for name in found:
+        if name.lower() == text.lower():
+            return name
+    return found[0] if len(found) == 1 else text
+
+
+def _years_label(years: float | None) -> str:
+    if years is None:
+        return "Years not on résumé"
+    number = int(years) if float(years).is_integer() else years
+    return f"{number} year" if number == 1 else f"{number} years"
+
+
+def _stored_years(candidate: Candidate, skill: str) -> float | None:
+    names = {skill.lower(), *(name.lower() for name in aliases_for(skill))}
+    best: float | None = None
+    for item in candidate.skills or []:
+        if not isinstance(item, dict) or str(item.get("name") or "").lower() not in names:
+            continue
+        value = item.get("years")
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+            continue
+        best = float(value) if best is None else max(best, float(value))
+    return best
+
+
+def measure_skill(candidate: Candidate, skill: str, today: date, stints: list) -> tuple[float | None, str]:
+    """The higher of the résumé reading and the years stored on the profile."""
+    parsed, _basis = skill_years(candidate.redacted_text or "", stints, skill, today)
+    stored = _stored_years(candidate, skill)
+    if parsed is None:
+        years = stored
+    elif stored is None:
+        years = parsed
+    else:
+        years = max(parsed, stored)
+    return years, _years_label(years)
+
+
+def search_by_skills(session: Session, needs: list[tuple[str, float | None]]) -> tuple[list[Candidate], list[dict]]:
+    """Candidates who have every skill, and at least the minimum years when one was asked for."""
+    filters = Filters(skills=[name for name, _minimum in needs], parser="skills")
+    rows = run_filters(session, filters, "").rows
+    today = date.today()
+    kept: list[tuple[Candidate, list[dict]]] = []
+    for candidate in rows:
+        stints = employment_stints(candidate.redacted_text or "", today)
+        measured: list[dict] = []
+        short = False
+        for name, minimum in needs:
+            years, label = measure_skill(candidate, name, today, stints)
+            if minimum is not None and (years is None or years < minimum):
+                short = True
+                break
+            measured.append({"name": name, "years": years, "min_years": minimum, "label": label})
+        if not short:
+            kept.append((candidate, measured))
+    return [candidate for candidate, _measured in kept], [measured for _candidate, measured in kept]
+
+
+def describe_skill_search(needs: list[tuple[str, float | None]], count: int) -> str:
+    bits = []
+    for name, minimum in needs:
+        if minimum is None:
+            bits.append(name)
+        else:
+            number = int(minimum) if float(minimum).is_integer() else minimum
+            bits.append(f"{name} ({number}+ years)")
+    people = "person" if count == 1 else "people"
+    text = f"{count} {people} with " + " and ".join(bits) + "."
+    if count >= RESULT_LIMIT:
+        text += f" Showing the first {RESULT_LIMIT}."
+    return text
 
 
 def describe(result: FindResult) -> str:

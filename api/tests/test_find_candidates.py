@@ -217,6 +217,49 @@ def test_ask_outside_a_state_excludes_it_and_unknown_homes(db):
     assert [person["full_name"] for person in body["candidates"]] == ["Victor Adams"]
 
 
+def test_skill_search_reports_years_and_drops_anyone_under_the_minimum(db):
+    db.add_all(
+        [
+            Candidate(
+                file_sha256="java-8",
+                full_name="Ada Years",
+                location="McLean, VA",
+                status="pending_review",
+                skills=[{"name": "Java", "years": 3}],
+                titles=["Software Engineer"],
+                redacted_text="Ada Years\nMcLean, VA\n8 years of Java and Python services.",
+            ),
+            Candidate(
+                file_sha256="java-1",
+                full_name="Bea Short",
+                location="Reston, VA",
+                status="pending_review",
+                skills=[{"name": "Java", "years": 1}],
+                titles=["Developer"],
+                redacted_text="Bea Short\nReston, VA\nJava developer.",
+            ),
+        ]
+    )
+    db.commit()
+    app = create_app()
+    with TestClient(app) as client:
+        app.state.llm = ScriptedLLM()
+        app.state.embedder = RecordingEmbedder()
+        assert client.post("/admin/login", json={"password": "correct-horse"}).status_code == 200
+        narrow = client.post("/admin/candidates/skills", json={"skills": [{"name": "Java", "min_years": 5}]})
+        assert narrow.status_code == 200, narrow.text
+        body = narrow.json()
+        assert [person["full_name"] for person in body["candidates"]] == ["Ada Years"]
+        assert body["candidates"][0]["skill_years"] == [{"name": "Java", "years": 8.0, "min_years": 5.0, "label": "8 years"}]
+        wide = client.post("/admin/candidates/skills", json={"skills": [{"name": "java"}]})
+        assert [person["full_name"] for person in wide.json()["candidates"]] == ["Ada Years", "Bea Short"]
+        bea = wide.json()["candidates"][1]["skill_years"][0]
+        assert bea["years"] == 1.0
+        assert bea["label"] == "1 year"
+        both = client.post("/admin/candidates/skills", json={"skills": [{"name": "Java and Python"}]})
+        assert both.status_code == 400
+
+
 def test_ask_role_question_still_uses_categories(db):
     _seed(db)
     body = _ask(ScriptedLLM({"roles": ["Software Engineer"]}), "Show me all Software Engineers.")

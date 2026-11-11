@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useCan } from "@/lib/desk";
 import { reviewHref } from "@/lib/pipeline";
+import { candidateJobUrl, copyRich, escapeHtml, postingEmail } from "@/lib/posting";
+import { Check, Copy } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 
 type JobRow = {
@@ -23,6 +25,7 @@ type JobRow = {
   needs_review: boolean;
   last_seen_at: string | null;
   description_note: string | null;
+  posting_paragraphs?: string[];
   source_url: string | null;
   detail_error: string | null;
   submission_count?: number;
@@ -43,30 +46,6 @@ function fundingLabel(job: { funding: string | null }): string {
 
 function jobShareLabel(job: JobRow): string {
   return [job.requisition_code, job.title || "Untitled", job.location || ""].filter(Boolean).join(" — ");
-}
-
-/** Candidates on the internet use the public Spark address. An office or tailnet address stays on this machine. */
-const PUBLIC_CAREERS = "https://spark-42c4.tail55e197.ts.net";
-
-function isPrivateHost(host: string): boolean {
-  if (host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]") return true;
-  if (host.startsWith("10.") || host.startsWith("192.168.")) return true;
-  const second = /^172\.(\d+)\./.exec(host);
-  if (second && Number(second[1]) >= 16 && Number(second[1]) <= 31) return true;
-  return /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(host);
-}
-
-function candidateBase(): string {
-  if (typeof window === "undefined") return PUBLIC_CAREERS;
-  return isPrivateHost(window.location.hostname) ? PUBLIC_CAREERS : window.location.origin;
-}
-
-function candidateJobUrl(code: string): string {
-  return `${candidateBase()}/jobs?job=${encodeURIComponent(code)}`;
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 async function copyJobList(jobs: JobRow[]): Promise<void> {
@@ -111,6 +90,19 @@ export default function JobsPage() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [listOpen, setListOpen] = useState(false);
   const [listCopied, setListCopied] = useState(false);
+  const [copiedCode, setCopiedCode] = useState("");
+
+  async function copyDescription(job: JobRow) {
+    const email = postingEmail({
+      title: job.title,
+      location: job.location,
+      code: job.requisition_code,
+      paragraphs: job.posting_paragraphs || [],
+      applyUrl: candidateJobUrl(job.requisition_code),
+    });
+    await copyRich(email.plain, email.html);
+    setCopiedCode(job.requisition_code);
+  }
 
   async function load() {
     const response = await fetch("/api/admin/jobs");
@@ -357,6 +349,18 @@ export default function JobsPage() {
               <span className="block text-xs text-ink/60">{job.location}</span>
             </Link>
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+              <Link href={`/admin/jobs/${job.requisition_code}#details`} className="font-medium text-pine underline">
+                Details
+              </Link>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 text-pine underline"
+                aria-label={`Copy the ${job.requisition_code} description for email`}
+                onClick={() => void copyDescription(job)}
+              >
+                {copiedCode === job.requisition_code ? <Check className="h-4 w-4" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}
+                Copy for email
+              </button>
               <Link href={`/admin/jobs/${job.requisition_code}#submissions`} className="text-pine underline">
                 {job.submission_count || 0} submitted
               </Link>
@@ -384,6 +388,7 @@ export default function JobsPage() {
               <th className="px-3 py-2">Internal code</th>
               <th className="px-3 py-2">Proposed / funded</th>
               <th className="px-3 py-2">Title</th>
+              <th className="px-3 py-2">Details</th>
               <th className="px-3 py-2">City</th>
               <th className="px-3 py-2">Status</th>
               <th className="px-3 py-2">Submitted</th>
@@ -402,7 +407,26 @@ export default function JobsPage() {
                 </td>
                 <td className="px-3 py-2 font-mono whitespace-nowrap">{job.external_req || "—"}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{fundingLabel(job)}</td>
-                <td className="px-3 py-2">{job.title}</td>
+                <td className="px-3 py-2">
+                  <Link href={`/admin/jobs/${job.requisition_code}#details`} className="font-medium text-pine underline">
+                    {job.title || "Untitled job"}
+                  </Link>
+                </td>
+                <td className="px-3 py-2">
+                  <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                    <Link href={`/admin/jobs/${job.requisition_code}#details`} className="text-pine underline">
+                      Details
+                    </Link>
+                    <button
+                      type="button"
+                      className="text-pine"
+                      aria-label={`Copy the ${job.requisition_code} description for email`}
+                      onClick={() => void copyDescription(job)}
+                    >
+                      {copiedCode === job.requisition_code ? <Check className="h-4 w-4" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}
+                    </button>
+                  </span>
+                </td>
                 <td className="px-3 py-2">{job.location}</td>
                 <td className="px-3 py-2">{job.status}</td>
                 <td className="px-3 py-2">
@@ -437,11 +461,19 @@ export default function JobsPage() {
               .filter((job) => job.status === "closed")
               .map((job) => (
                 <li key={job.requisition_code}>
-                  <Link href={`/admin/jobs/${job.requisition_code}`} className="font-mono text-pine underline">
+                  <Link href={`/admin/jobs/${job.requisition_code}#details`} className="font-mono text-pine underline">
                     {job.requisition_code}
                   </Link>
                   {job.external_req ? <span className="font-mono"> {job.external_req}</span> : null}{" "}
-                  {job.title} · {job.location} · {fundingLabel(job)} · closed
+                  <Link href={`/admin/jobs/${job.requisition_code}#details`} className="text-pine underline">
+                    {job.title || "Untitled job"}
+                  </Link>
+                  {" · "}
+                  {job.location} · {fundingLabel(job)} · closed
+                  {" · "}
+                  <Link href={`/admin/jobs/${job.requisition_code}#details`} className="text-pine underline">
+                    Details
+                  </Link>
                   <p className="text-ink">{job.close_note || "No note was saved."}</p>
                   {(canEdit || canDelete) && (
                     <div className="mt-1 flex flex-wrap items-center gap-2">

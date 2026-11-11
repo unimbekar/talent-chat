@@ -5,11 +5,13 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
 import { JobSubmissions, type SubmissionIndex } from "@/components/job-submissions";
+import { LinkedInSource } from "@/components/linkedin-source";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { BackButton } from "@/components/back-button";
 import { CandidateMailBar, copyText, selectedEmails, shown } from "@/components/candidate-mail";
-import { Download } from "lucide-react";
+import { Check, Copy, Download } from "lucide-react";
+import { candidateJobUrl, copyRich, postingBlocks, postingEmail } from "@/lib/posting";
 
 import { downloadCsv, percent } from "@/lib/csv";
 import { useCan } from "@/lib/desk";
@@ -44,6 +46,7 @@ type JobDetail = {
   close_note: string | null;
   description_source: string;
   description_text: string | null;
+  posting_paragraphs?: string[];
   description_note: string | null;
   needs_review: boolean;
   must_have_skills: string[];
@@ -78,6 +81,7 @@ export default function JobDetailPage() {
   const [closeNote, setCloseNote] = useState("");
   const [closing, setClosing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [copiedPosting, setCopiedPosting] = useState(false);
   const [submitted, setSubmitted] = useState<SubmissionIndex>({});
   const [submissionReload, setSubmissionReload] = useState(0);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
@@ -325,6 +329,109 @@ export default function JobDetailPage() {
         </div>
       </div>
 
+      <section id="details" className="scroll-mt-6 panel p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-serif text-xl">Job details</h2>
+            <p className="page-lead">The same description candidates read before they apply.</p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            aria-label="Copy the job description for email"
+            onClick={() => {
+              const email = postingEmail({
+                title: job.title,
+                location: job.location,
+                code: job.requisition_code,
+                paragraphs: job.posting_paragraphs || [],
+                applyUrl: candidateJobUrl(job.requisition_code),
+              });
+              void copyRich(email.plain, email.html).then(() => setCopiedPosting(true));
+            }}
+          >
+            {copiedPosting ? <Check className="h-4 w-4" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}
+            {copiedPosting ? "Copied" : "Copy for email"}
+          </Button>
+        </div>
+        {job.description_note && <p className="mt-2 text-sm">{job.description_note}</p>}
+        {(job.posting_paragraphs || []).length === 0 ? (
+          <p className="mt-3 text-sm">No description on file.</p>
+        ) : (
+          <div className="mt-3 flex flex-col gap-2 text-sm leading-6">
+            {postingBlocks(job.posting_paragraphs || []).map((block, index) =>
+              block.kind === "heading" ? (
+                <h3 key={index} className="mt-2 font-serif text-lg">
+                  {block.text}
+                </h3>
+              ) : block.kind === "item" ? (
+                <p key={index} className="pl-4 before:mr-2 before:content-['•']">
+                  {block.text}
+                </p>
+              ) : (
+                <p key={index}>{block.text}</p>
+              )
+            )}
+          </div>
+        )}
+        {job.source_url && (
+          <a className="mt-3 inline-block text-sm text-pine underline" href={job.source_url}>
+            Source posting
+          </a>
+        )}
+      </section>
+
+      <LinkedInSource code={job.requisition_code} />
+
+      {!canEdit && (
+        <section className="panel p-4">
+          <h2 className="font-serif text-xl">Requirements</h2>
+          <p className="page-lead">What résumés are scored against. An admin edits these.</p>
+          <dl className="mt-3 grid gap-4 text-sm sm:grid-cols-2">
+            <ReadOnlyList label="Mandatory skills" items={must} />
+            <ReadOnlyList label="Desired skills" items={desired} />
+            <div>
+              <dt className="text-ink/45">City</dt>
+              <dd className="mt-1">{location || "Not set"}</dd>
+            </div>
+            <div>
+              <dt className="text-ink/45">Clearance</dt>
+              <dd className="mt-1">{clearance || "Not set"}</dd>
+            </div>
+          </dl>
+        </section>
+      )}
+
+      {canEdit && (
+        <form onSubmit={save} className="flex flex-col gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <SkillList label="Mandatory skills" skills={must} onChange={setMust} />
+            <SkillList label="Desired skills" skills={desired} onChange={setDesired} />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="text-sm">
+              City
+              <Input value={location} onChange={(event) => setLocation(event.target.value)} className="mt-1" />
+            </label>
+            <label className="text-sm">
+              Clearance
+              <Input value={clearance} onChange={(event) => setClearance(event.target.value)} className="mt-1" />
+            </label>
+          </div>
+          <label className="text-sm">
+            Internal description (replaces the careers-page text)
+            <Textarea value={replacement} onChange={(event) => setReplacement(event.target.value)} rows={6} className="mt-1" />
+          </label>
+          <div className="flex items-center gap-3">
+            <Button type="submit" disabled={saving}>
+              {saving ? "Saving…" : "Save"}
+            </Button>
+            {message && <p className="text-sm" role="status">{message}</p>}
+          </div>
+        </form>
+      )}
+
       {!canEdit ? (
         job.status === "closed" && (
           <section className="panel p-4">
@@ -486,63 +593,6 @@ export default function JobDetailPage() {
           })}
         </div>
       </section>
-
-      <section className="panel p-4">
-        <h2 className="font-serif text-xl">Description</h2>
-        {job.description_note && <p className="mt-2 text-sm">{job.description_note}</p>}
-        <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{job.description_text || "No description on file."}</p>
-        {job.source_url && (
-          <a className="mt-3 inline-block text-sm text-pine underline" href={job.source_url}>
-            Source posting
-          </a>
-        )}
-      </section>
-
-      {!canEdit && (
-        <section className="panel p-4">
-          <h2 className="font-serif text-xl">Requirements</h2>
-          <p className="page-lead">What résumés are scored against. An admin edits these.</p>
-          <dl className="mt-3 grid gap-4 text-sm sm:grid-cols-2">
-            <ReadOnlyList label="Mandatory skills" items={must} />
-            <ReadOnlyList label="Desired skills" items={desired} />
-            <div>
-              <dt className="text-ink/45">City</dt>
-              <dd className="mt-1">{location || "Not set"}</dd>
-            </div>
-            <div>
-              <dt className="text-ink/45">Clearance</dt>
-              <dd className="mt-1">{clearance || "Not set"}</dd>
-            </div>
-          </dl>
-        </section>
-      )}
-
-      {canEdit && <form onSubmit={save} className="flex flex-col gap-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <SkillList label="Mandatory skills" skills={must} onChange={setMust} />
-          <SkillList label="Desired skills" skills={desired} onChange={setDesired} />
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="text-sm">
-            City
-            <Input value={location} onChange={(event) => setLocation(event.target.value)} className="mt-1" />
-          </label>
-          <label className="text-sm">
-            Clearance
-            <Input value={clearance} onChange={(event) => setClearance(event.target.value)} className="mt-1" />
-          </label>
-        </div>
-        <label className="text-sm">
-          Internal description (replaces the careers-page text)
-          <Textarea value={replacement} onChange={(event) => setReplacement(event.target.value)} rows={6} className="mt-1" />
-        </label>
-        <div className="flex items-center gap-3">
-          <Button type="submit" disabled={saving}>
-            {saving ? "Saving…" : "Save"}
-          </Button>
-          {message && <p className="text-sm" role="status">{message}</p>}
-        </div>
-      </form>}
     </div>
   );
 }
