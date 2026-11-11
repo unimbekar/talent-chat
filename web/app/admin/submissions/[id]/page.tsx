@@ -19,6 +19,9 @@ import {
   money,
   parseSalary,
   personName,
+  resumeFileUrl,
+  resumeUpdateHref,
+  reviewHref,
   whenExact,
   type StageInfo,
   type SubmissionDetail,
@@ -219,6 +222,17 @@ export default function SubmissionPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Button asChild size="sm">
+              <Link href={reviewHref(row.job.requisition_code, row.candidate.id)}>Review</Link>
+            </Button>
+            <Button asChild size="sm" variant="outline">
+              <Link href={resumeUpdateHref(row.job.requisition_code, row.candidate.id)}>Update résumé</Link>
+            </Button>
+            {row.candidate.original_filename && (
+              <Button asChild size="sm" variant="outline">
+                <a href={resumeFileUrl(row.candidate.id, true)}>Download résumé</a>
+              </Button>
+            )}
             {canBurden && row.burden_summary && (
               <a href="#burden" className="transition hover:opacity-80">
                 <BurdenChip summary={row.burden_summary} />
@@ -265,6 +279,26 @@ export default function SubmissionPage() {
               </div>
             )}
           </dl>
+          {(row.application.requirement_justifications || []).length > 0 && (
+            <div className="mt-4">
+              <h3 className="text-sm font-medium">Justifications they wrote</h3>
+              <ul className="mt-2 flex flex-col gap-3">
+                {row.application.requirement_justifications?.map((item) => (
+                  <li key={item.line} className="rounded-xl border border-line px-3 py-2 text-sm">
+                    <p className="text-xs uppercase tracking-wide text-ink/45">{item.kind || "Requirement"}</p>
+                    <p className="mt-1 font-medium">{item.line}</p>
+                    <p className="mt-1 leading-6 text-ink/80">{item.justification}</p>
+                  </li>
+                ))}
+              </ul>
+              <Link
+                href={`/admin/resume-update?job=${encodeURIComponent(row.job.requisition_code)}&candidate=${row.candidate.id}`}
+                className="mt-3 inline-block text-sm text-pine hover:underline"
+              >
+                Open these on Update résumé
+              </Link>
+            </div>
+          )}
         </section>
       )}
 

@@ -73,6 +73,7 @@ def _items(lines: list[str], coverage: dict, have: set[str]) -> list[dict]:
         tools = tools_and_languages(line)
         items.append(
             {
+                "line": line,
                 "label": label,
                 "text": detail,
                 "met": line in met,

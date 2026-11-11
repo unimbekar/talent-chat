@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ClipboardCheck, Download } from "lucide-react";
 
 import { downloadCsv } from "@/lib/csv";
+import { reviewHref } from "@/lib/pipeline";
 import { writeCache } from "@/lib/page-cache";
 
 type Person = {
@@ -254,6 +255,9 @@ export default function FindPage() {
                     </Link>
                     <Link href={`/admin/match?id=${person.id}`} className="ml-2 text-xs text-pine hover:underline">
                       Rank
+                    </Link>
+                    <Link href={reviewHref(undefined, person.id)} className="ml-2 text-xs text-pine hover:underline">
+                      Review
                     </Link>
                     <p className="text-xs text-ink/60">{person.titles.join(", ")}</p>
                     <p className="text-xs text-ink/80">Email: {shown(person.email)}</p>

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { VisitorsGlance } from "@/components/visitors-glance";
 import { useCan } from "@/lib/desk";
 import { readCache, writeCache } from "@/lib/page-cache";
+import { reviewHref } from "@/lib/pipeline";
 
 type Overview = {
   jobs: { open: number; closed: number; needs_review: number; no_description: number };
@@ -128,6 +129,9 @@ export default function DashboardPage() {
                     <p className="truncate text-xs text-ink/55">{[person.title, person.location].filter(Boolean).join(" · ") || "No title or location yet"}</p>
                   </div>
                 </div>
+                <Link href={reviewHref(undefined, person.id)} className="shrink-0 text-xs font-medium text-pine hover:underline">
+                  Review
+                </Link>
                 <span className="shrink-0 text-xs text-ink/45">{ago(person.created_at)}</span>
               </li>
             ))}

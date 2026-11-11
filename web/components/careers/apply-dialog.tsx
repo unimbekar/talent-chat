@@ -14,7 +14,7 @@ export type OpenRole = {
 };
 
 type Tool = { name: string; have: boolean };
-type Item = { label: string | null; text: string; met: boolean; tools: Tool[] };
+type Item = { line: string; label: string | null; text: string; met: boolean; tools: Tool[] };
 type Coverage = { pct: number | null; hit: number; total: number; items: Item[] };
 type Check = {
   verdict: "strong" | "partial" | "low" | "unknown";
@@ -92,15 +92,10 @@ export function ApplyDialog({ job, onClose }: { job: OpenRole; onClose: () => vo
     const form = new FormData(event.currentTarget);
     form.set("requisition_code", job.requisition_code);
     form.set("fsp", "yes");
-    const fitNote = Object.entries(claims)
-      .filter(([, text]) => text != null)
-      .map(([line, text]) => (text.trim() ? `${line}: ${text.trim()}` : line))
-      .join("; ");
-    if (fitNote) {
-      const written = String(form.get("note") || "").trim();
-      const combined = [written, `Job match: the candidate says these lines are on the résumé. ${fitNote}`].filter(Boolean).join(" ");
-      form.set("note", combined.slice(0, 1000));
-    }
+    const notes = Object.entries(claims)
+      .map(([line, text]) => ({ line, justification: text.trim() }))
+      .filter((item) => item.justification);
+    if (notes.length) form.set("justifications", JSON.stringify(notes));
     try {
       const response = await fetch("/api/public/apply", { method: "POST", body: form });
       const body = await response.json().catch(() => ({}));
@@ -367,7 +362,7 @@ function CheckPanel({
           <p className="desk-muted px-4 pb-1 text-[11px] font-medium uppercase tracking-[0.14em]">Required</p>
           <ul className="desk-line divide-y border-t">
             {required.map((item) => (
-              <Requirement key={itemKey(item)} item={item} claim={claims[itemKey(item)]} onClaim={(note) => onClaim(itemKey(item), note)} />
+              <Requirement key={item.line || itemKey(item)} item={item} claim={claims[item.line]} onClaim={(note) => onClaim(item.line, note)} />
             ))}
           </ul>
         </div>
@@ -377,7 +372,7 @@ function CheckPanel({
           <p className="desk-muted px-4 pb-1 pt-3 text-[11px] font-medium uppercase tracking-[0.14em]">Desired, not shown</p>
           <ul className="desk-line divide-y border-t">
             {desiredMissing.map((item) => (
-              <Requirement key={itemKey(item)} item={item} claim={claims[itemKey(item)]} onClaim={(note) => onClaim(itemKey(item), note)} />
+              <Requirement key={item.line || itemKey(item)} item={item} claim={claims[item.line]} onClaim={(note) => onClaim(item.line, note)} />
             ))}
           </ul>
         </div>
@@ -404,7 +399,7 @@ function CheckPanel({
           <button type="button" onClick={onReplace} className="desk-accent font-medium underline-offset-2 hover:underline">
             replace it
           </button>{" "}
-          to score again. If a missing line is really there, say so beside it. That note goes with the application. The résumé is kept only when you submit.
+          to score again. For a requirement it does not show, you can write how you meet it. A full sentence is saved with the application. Leave it blank if you have nothing to add. The résumé is kept only when you submit.
         </p>
       </div>
     </div>
@@ -433,25 +428,17 @@ function Requirement({ item, claim, onClaim }: { item: Item; claim?: string; onC
           </div>
         )}
         {!item.met && onClaim && (
-          <div className="mt-2">
-            <label className="desk-muted inline-flex cursor-pointer items-center gap-2 text-xs">
-              <input
-                type="checkbox"
-                checked={claim != null}
-                onChange={(event) => onClaim(event.target.checked ? "" : null)}
-              />
-              I have this
-            </label>
-            {claim != null && (
-              <input
-                value={claim}
-                maxLength={160}
-                onChange={(event) => onClaim(event.target.value)}
-                placeholder="Where it shows, if you want to say"
-                className="desk-field mt-2 w-full rounded-lg px-2.5 py-1.5 text-xs outline-none"
-              />
-            )}
-          </div>
+          <label className="mt-2 block">
+            <span className="desk-muted text-xs">How you meet this, if the résumé does not show it</span>
+            <textarea
+              value={claim || ""}
+              maxLength={2000}
+              rows={3}
+              onChange={(event) => onClaim(event.target.value)}
+              placeholder="Optional. Write a full sentence, or leave this blank."
+              className="desk-field mt-1 w-full rounded-lg px-2.5 py-1.5 text-xs leading-5 outline-none"
+            />
+          </label>
         )}
       </div>
     </li>

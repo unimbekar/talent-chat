@@ -9,7 +9,7 @@ import { Bars, Columns, Funnel } from "@/components/report-charts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCan } from "@/lib/desk";
-import { money } from "@/lib/pipeline";
+import { money, reviewHref } from "@/lib/pipeline";
 import { reportQuery, shiftDays, ymd, type Report } from "@/lib/reports";
 
 const PRESETS = [
@@ -254,9 +254,14 @@ export default function ReportsPage() {
                       <span className="text-ink/55"> · {row.to_label}</span>
                       <span className="text-ink/45"> from {row.from_label || "the start"}</span>
                     </span>
-                    <Link href={`/admin/jobs/${row.job.requisition_code}`} className="text-ink/60 hover:underline">
-                      {row.job.requisition_code}
-                    </Link>
+                    <span className="flex items-center gap-3">
+                      <Link href={reviewHref(row.job.requisition_code, row.candidate.id)} className="font-medium text-pine hover:underline">
+                        Review
+                      </Link>
+                      <Link href={`/admin/jobs/${row.job.requisition_code}`} className="text-ink/60 hover:underline">
+                        {row.job.requisition_code}
+                      </Link>
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -436,9 +441,14 @@ function Submissions({
               </Link>
               <span className="text-ink/55"> · {row.stage_label}</span>
             </span>
-            <span className="text-ink/60">
-              {emphasizeSalary ? money(row.salary_usd) : row.job.requisition_code}
-              {emphasizeSalary ? ` · ${row.job.requisition_code}` : row.salary_usd != null ? ` · ${money(row.salary_usd)}` : ""}
+            <span className="flex items-center gap-3 text-ink/60">
+              <span>
+                {emphasizeSalary ? money(row.salary_usd) : row.job.requisition_code}
+                {emphasizeSalary ? ` · ${row.job.requisition_code}` : row.salary_usd != null ? ` · ${money(row.salary_usd)}` : ""}
+              </span>
+              <Link href={reviewHref(row.job.requisition_code, row.candidate.id)} className="font-medium text-pine hover:underline">
+                Review
+              </Link>
             </span>
           </li>
         ))}

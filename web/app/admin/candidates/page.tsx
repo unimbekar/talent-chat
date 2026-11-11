@@ -9,7 +9,7 @@ import { IngestProgress, IngestProgressView } from "@/components/ingest-progress
 import { useCan } from "@/lib/desk";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { resumeFileUrl } from "@/lib/pipeline";
+import { resumeFileUrl, reviewHref } from "@/lib/pipeline";
 
 type CandidateRow = {
   id: string;
@@ -359,6 +359,9 @@ export default function CandidatesPage() {
                     <p className="mt-1 flex gap-3 text-xs">
                       <Link href={`/admin/match?id=${candidate.id}`} className="text-pine hover:underline">
                         Rank against jobs
+                      </Link>
+                      <Link href={reviewHref(undefined, candidate.id)} className="text-pine hover:underline">
+                        Review
                       </Link>
                       {candidate.has_file && (
                         <a href={resumeFileUrl(candidate.id, true)} className="text-pine hover:underline">

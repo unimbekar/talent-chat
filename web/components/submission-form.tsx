@@ -10,6 +10,7 @@ import {
   existingSubmissionId,
   parseSalary,
   personName,
+  reviewHref,
   type JobBrief,
   type PersonBrief,
 } from "@/lib/pipeline";
@@ -35,7 +36,8 @@ export function SubmissionForm({ jobCode, candidateId, candidateName, onCreated 
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [existing, setExisting] = useState<string | null>(null);
+  const [existing, setExisting] = useState<{ id: string; job: string; candidate: string } | null>(null);
+  const [sent, setSent] = useState<{ id: string; job: string; candidate: string; name: string } | null>(null);
 
   useEffect(() => {
     if (jobCode) return;
@@ -82,8 +84,10 @@ export function SubmissionForm({ jobCode, candidateId, candidateName, onCreated 
     event.preventDefault();
     setError("");
     setExisting(null);
+    setSent(null);
     const person = candidateId || picked?.id;
     const code = jobCode || pickedJob;
+    const name = candidateName || (picked ? personName(picked) : "This candidate");
     if (!person || !code) {
       setError("Choose a candidate and a job.");
       return;
@@ -108,10 +112,17 @@ export function SubmissionForm({ jobCode, candidateId, candidateName, onCreated 
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setExisting(existingSubmissionId(data));
+        const already = existingSubmissionId(data);
+        setExisting(already ? { id: already, job: code, candidate: person } : null);
         setError(errorMessage(data, "The submission was not created."));
         return;
       }
+      setSent({
+        id: String(data.id || ""),
+        job: String(data.job?.requisition_code || code),
+        candidate: String(data.candidate?.id || person),
+        name,
+      });
       setQuery("");
       setHits([]);
       setPicked(null);
@@ -212,15 +223,38 @@ export function SubmissionForm({ jobCode, candidateId, candidateName, onCreated 
         Note for the history
         <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} className="field mt-1" placeholder="Sent to the hiring manager" />
       </label>
+      {sent && (
+        <div className="rounded-xl border border-pine/30 bg-pine/10 px-3 py-3 text-sm">
+          <p>{sent.name} is submitted for {sent.job}.</p>
+          <div className="mt-2 flex flex-wrap gap-3">
+            <Link href={reviewHref(sent.job, sent.candidate)} className="font-medium text-pine hover:underline">
+              Review this match
+            </Link>
+            {sent.id && (
+              <Link href={`/admin/submissions/${sent.id}`} className="text-pine hover:underline">
+                Open the submission
+              </Link>
+            )}
+            <button type="button" className="text-ink/70 hover:underline" onClick={() => setSent(null)}>
+              Submit someone else
+            </button>
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" disabled={busy}>
           {busy ? "Submitting…" : "Submit"}
         </Button>
         {error && <p className="text-sm text-red-700">{error}</p>}
         {existing && (
-          <Link href={`/admin/submissions/${existing}`} className="text-sm text-pine underline">
-            Open the existing submission
-          </Link>
+          <>
+            <Link href={`/admin/submissions/${existing.id}`} className="text-sm text-pine underline">
+              Open the existing submission
+            </Link>
+            <Link href={reviewHref(existing.job, existing.candidate)} className="text-sm text-pine underline">
+              Review
+            </Link>
+          </>
         )}
       </div>
     </form>

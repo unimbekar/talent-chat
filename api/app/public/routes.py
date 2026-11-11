@@ -197,6 +197,7 @@ async def apply(
     last_fsp_on: str = Form(""),
     last_tssci_on: str = Form(""),
     note: str = Form(""),
+    justifications: str = Form(""),
     file: UploadFile | None = File(default=None),
 ):
     if apply_limited(_client_ip(request)):
@@ -222,6 +223,7 @@ async def apply(
             last_fsp_on=last_fsp_on,
             last_tssci_on=last_tssci_on,
             note=note,
+            justifications=justifications,
             filename=file.filename if file is not None else "resume.txt",
             data=payload,
         )

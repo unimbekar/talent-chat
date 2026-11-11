@@ -14,7 +14,7 @@ import { Download } from "lucide-react";
 import { downloadCsv, percent } from "@/lib/csv";
 import { useCan } from "@/lib/desk";
 import { readCache, writeCache } from "@/lib/page-cache";
-import { resumeFileUrl } from "@/lib/pipeline";
+import { resumeFileUrl, reviewHref } from "@/lib/pipeline";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -317,7 +317,12 @@ export default function JobDetailPage() {
             {job.location} · {job.funding === "proposed" ? "Proposed" : "Funded"} · {job.status} · {job.description_source}
           </p>
         </div>
-        {job.needs_review && <Badge>Needs review</Badge>}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button asChild size="sm">
+            <Link href={reviewHref(job.requisition_code)}>Review candidates</Link>
+          </Button>
+          {job.needs_review && <Badge>Needs review</Badge>}
+        </div>
       </div>
 
       {!canEdit ? (

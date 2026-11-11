@@ -1,11 +1,15 @@
 """Careers-site applications land in the pipeline only with TS/SCI and FSP."""
 
 from datetime import date, timedelta
+from io import BytesIO
+import json
 
+from docx import Document
 from fastapi.testclient import TestClient
 
+from app.careers_apply import reset_apply_limit
 from app.main import create_app
-from app.models import Job, JobApplication, Submission
+from app.models import Job, JobApplication, ResumeUpdate, Submission, SubmissionComment
 from tests.fakes import RecordingEmbedder, RecordingLLM
 
 RESUME = (
@@ -282,3 +286,132 @@ def test_fsp_is_required_and_a_yes_is_submitted(db):
         assert closed.status_code == 404
     finally:
         client.__exit__(None, None, None)
+
+
+KUBERNETES = "Experience with Kubernetes"
+TERRAFORM = "Experience with Terraform"
+KUBE_NOTE = "Alex ran Kubernetes clusters for the Acme platform from 2021 through 2024."
+FORM_NOTE = "Terraform was used on the same program to provision the AWS accounts."
+KUBE_NOTE_2 = "Alex was the on-call lead for the Kubernetes platform, including upgrades and incident response."
+
+
+def _gap_job(db) -> Job:
+    job = _job(db)
+    job.must_have_skills = ["Java", "Kubernetes", "Terraform"]
+    job.skill_quotes = {"must": ["Java", KUBERNETES, TERRAFORM], "nice": []}
+    db.commit()
+    return job
+
+
+def _paragraphs(payload: bytes) -> str:
+    document = Document(BytesIO(payload))
+    return "\n".join(paragraph.text for paragraph in document.paragraphs)
+
+
+def test_a_resume_check_names_the_posting_line(db):
+    _gap_job(db)
+    client = _client()
+    try:
+        response = client.post("/public/apply/check", data={"requisition_code": "A1001"}, files=_file())
+        assert response.status_code == 200, response.text
+        lines = {item["line"]: item["met"] for item in response.json()["required"]["items"]}
+        assert lines["Java"] is True
+        assert lines[KUBERNETES] is False
+        assert lines[TERRAFORM] is False
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_an_applicant_can_justify_missing_requirements(db):
+    reset_apply_limit()
+    _gap_job(db)
+    client = _client()
+    try:
+        short = client.post(
+            "/public/apply",
+            data=_form(justifications=json.dumps([{"line": KUBERNETES, "justification": "I know it"}])),
+            files=_file(),
+        )
+        assert short.status_code == 400, short.text
+        assert "full sentence" in short.json()["detail"]["message"]
+        assert db.query(Submission).count() == 0
+        assert db.query(ResumeUpdate).count() == 0
+
+        covered = json.dumps(
+            [
+                {"line": "Java", "justification": "Java is the language used on every project listed in the résumé."},
+                {"line": KUBERNETES, "justification": KUBE_NOTE},
+                {"line": "Not a requirement", "justification": FORM_NOTE},
+            ]
+        )
+        accepted = client.post("/public/apply", data=_form(justifications=covered), files=_file())
+        assert accepted.status_code == 200, accepted.text
+        db.expire_all()
+        update = db.query(ResumeUpdate).one()
+        saved = {item["line"]: item for item in update.items}
+        assert list(saved) == [KUBERNETES]
+        assert saved[KUBERNETES]["justification"] == KUBE_NOTE
+        assert saved[KUBERNETES]["kind"] == "Mandatory"
+        assert update.updated_by == "alex.rivera@example.com"
+        application = db.query(JobApplication).one()
+        assert KUBE_NOTE not in (application.note or "")
+        comment = db.query(SubmissionComment).one()
+        assert "Wrote 1 requirement justification." in comment.body
+
+        update.items = [
+            saved[KUBERNETES],
+            {"line": TERRAFORM, "kind": "Mandatory", "justification": FORM_NOTE},
+        ]
+        update.updated_by = "recruiter@janus-soft.com"
+        db.commit()
+
+        again = client.post(
+            "/public/apply",
+            data=_form(justifications=json.dumps([{"line": KUBERNETES, "justification": KUBE_NOTE_2}])),
+            files=_file(),
+        )
+        assert again.status_code == 200, again.text
+        db.expire_all()
+        update = db.query(ResumeUpdate).one()
+        saved = {item["line"]: item["justification"] for item in update.items}
+        assert saved[KUBERNETES] == KUBE_NOTE_2
+        assert saved[TERRAFORM] == FORM_NOTE
+        assert update.updated_by == "alex.rivera@example.com"
+
+        quiet = client.post("/public/apply", data=_form(salary_usd="180000"), files=_file())
+        assert quiet.status_code == 200, quiet.text
+        db.expire_all()
+        update = db.query(ResumeUpdate).one()
+        saved = {item["line"]: item["justification"] for item in update.items}
+        assert saved == {KUBERNETES: KUBE_NOTE_2, TERRAFORM: FORM_NOTE}
+
+        candidate_id = str(db.query(Submission).one().candidate_id)
+        submission_id = str(db.query(Submission).one().id)
+    finally:
+        client.__exit__(None, None, None)
+
+    desk = _client()
+    try:
+        assert desk.post("/admin/login", json={"password": "correct-horse"}).status_code == 200
+        detail = desk.get(f"/admin/submissions/{submission_id}")
+        assert detail.status_code == 200, detail.text
+        notes = {item["line"]: item["justification"] for item in detail.json()["application"]["requirement_justifications"]}
+        assert notes[KUBERNETES] == KUBE_NOTE_2
+        assert notes[TERRAFORM] == FORM_NOTE
+
+        page = desk.get("/admin/resume-update", params={"code": "A1001", "candidate_id": candidate_id})
+        assert page.status_code == 200, page.text
+        shown = {item["line"]: item["justification"] for item in page.json()["missing"]}
+        assert shown[KUBERNETES] == KUBE_NOTE_2
+        assert shown[TERRAFORM] == FORM_NOTE
+        assert page.json()["complete"] is True
+        assert page.json()["updated_by"] == "alex.rivera@example.com"
+
+        downloaded = desk.get("/admin/resume-update/file", params={"code": "A1001", "candidate_id": candidate_id})
+        assert downloaded.status_code == 200, downloaded.text
+        text = _paragraphs(downloaded.content)
+        assert KUBE_NOTE_2 in text
+        assert FORM_NOTE in text
+        assert "Java and AWS" in text
+    finally:
+        desk.__exit__(None, None, None)

@@ -10,7 +10,7 @@ import { StageBadge } from "@/components/stage-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCan } from "@/lib/desk";
-import { money, personName, when, type StageInfo, type SubmissionCard } from "@/lib/pipeline";
+import { money, personName, resumeUpdateHref, reviewHref, when, type StageInfo, type SubmissionCard } from "@/lib/pipeline";
 
 type Board = {
   stages: StageInfo[];
@@ -56,6 +56,7 @@ export default function PipelinePage() {
   }
 
   const rows = board?.submissions || [];
+  const sameJob = rows.length > 1 && rows.every((row) => row.job.requisition_code === rows[0].job.requisition_code);
 
   return (
     <div className="flex flex-col gap-6">
@@ -63,7 +64,7 @@ export default function PipelinePage() {
         <div>
           <h1 className="page-title">Pipeline</h1>
           <p className="page-lead">
-            Every person sent for a job. Move them from submitted, through salary and interview, to selected. Ended submissions stay on the candidate’s history.
+            Every person sent for a job. Review opens the requirement match for that person and that job. Move them from submitted, through salary and interview, to selected. Ended submissions stay on the candidate’s history.
           </p>
         </div>
         <Button type="button" onClick={() => setComposer((value) => !value)}>
@@ -77,7 +78,6 @@ export default function PipelinePage() {
           <div className="mt-3">
             <SubmissionForm
               onCreated={() => {
-                setComposer(false);
                 setScope("active");
                 setStage("");
               }}
@@ -131,6 +131,20 @@ export default function PipelinePage() {
       <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name, email, job code, or title" aria-label="Search submissions" />
       {error && <p className="text-sm text-red-700">{error}</p>}
 
+      {sameJob && rows.length > 1 && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-ink/65">
+            Everyone in this list is for <span className="font-mono text-pine">{rows[0].job.requisition_code}</span>.
+          </p>
+          <Button asChild size="sm">
+            <Link href={reviewHref(rows[0].job.requisition_code, undefined, rows.map((row) => row.candidate.id))}>
+              Review {Math.min(rows.length, 25)}
+              {rows.length > 25 ? " of these" : ""}
+            </Link>
+          </Button>
+        </div>
+      )}
+
       <div className="overflow-hidden panel">
         {board && rows.length === 0 && (
           <p className="px-4 py-10 text-sm text-ink/65">
@@ -140,8 +154,10 @@ export default function PipelinePage() {
         <ul className="divide-y divide-line">
           {rows.map((row) => (
             <li key={row.id} className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 transition hover:bg-desk/70">
-              <Link href={`/admin/submissions/${row.id}`} className="min-w-0 flex-1">
-                <span className="block truncate font-medium">{personName(row.candidate)}</span>
+              <div className="min-w-0 flex-1">
+                <Link href={`/admin/submissions/${row.id}`} className="block truncate font-medium hover:text-pine">
+                  {personName(row.candidate)}
+                </Link>
                 <span className="mt-0.5 block truncate text-sm text-ink/65">
                   <span className="font-mono text-pine">{row.job.requisition_code}</span> · {row.job.title || "Untitled job"} · {row.job.location || "No city"}
                 </span>
@@ -149,14 +165,19 @@ export default function PipelinePage() {
                   Updated {when(row.updated_at)}
                   {row.comment_count ? ` · ${row.comment_count} ${row.comment_count === 1 ? "comment" : "comments"}` : ""}
                 </span>
-              </Link>
+                <span className="mt-2 flex flex-wrap items-center gap-2">
+                  <Button asChild size="sm">
+                    <Link href={reviewHref(row.job.requisition_code, row.candidate.id)}>Review</Link>
+                  </Button>
+                  <Link href={resumeUpdateHref(row.job.requisition_code, row.candidate.id)} className="text-sm text-pine hover:underline">
+                    Update résumé
+                  </Link>
+                </span>
+              </div>
               <span className="flex flex-wrap items-center justify-end gap-3">
                 {canBurden && row.burden_summary && <BurdenChip summary={row.burden_summary} />}
                 <span className="text-sm text-ink/70">{money(row.salary_usd)}</span>
                 <StageBadge stage={row.stage} label={row.stage_label} />
-                <Button asChild size="sm" variant="outline">
-                  <Link href={`/admin/review?job=${encodeURIComponent(row.job.requisition_code)}&candidate=${row.candidate.id}`}>Review</Link>
-                </Button>
               </span>
             </li>
           ))}

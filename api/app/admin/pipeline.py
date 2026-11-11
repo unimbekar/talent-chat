@@ -21,6 +21,7 @@ from app.models import (
     Candidate,
     CandidateComment,
     Job,
+    ResumeUpdate,
     Submission,
     SubmissionComment,
     SubmissionEvent,
@@ -240,6 +241,20 @@ def _burden_out(row: Submission) -> dict:
     return {"saved": False, "saved_at": None, "inputs": inputs, "result": result}
 
 
+def _requirement_notes(row: Submission) -> list[dict]:
+    session = object_session(row)
+    if session is None:
+        return []
+    update = session.scalar(select(ResumeUpdate).where(ResumeUpdate.candidate_id == row.candidate_id, ResumeUpdate.job_id == row.job_id))
+    if update is None:
+        return []
+    notes = []
+    for item in update.items or []:
+        if isinstance(item, dict) and item.get("line") and item.get("justification"):
+            notes.append({"line": item["line"], "kind": item.get("kind") or "", "justification": item["justification"]})
+    return notes
+
+
 def _application_out(row: Submission) -> dict | None:
     application = row.application
     if application is None:
@@ -257,6 +272,7 @@ def _application_out(row: Submission) -> dict | None:
         "last_tssci_on": application.last_tssci_on.isoformat() if application.last_tssci_on else None,
         "note": application.note,
         "created_at": application.created_at.isoformat() if application.created_at else None,
+        "requirement_justifications": _requirement_notes(row),
     }
 
 

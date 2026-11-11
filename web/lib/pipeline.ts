@@ -69,6 +69,7 @@ export type SiteApplication = {
   last_tssci_on: string | null;
   note: string | null;
   created_at: string | null;
+  requirement_justifications?: { line: string; kind: string; justification: string }[];
 };
 
 export type SubmissionDetail = SubmissionCard & {
@@ -92,6 +93,19 @@ export const STAGE_TONE: Record<string, string> = {
 
 export function resumeFileUrl(candidateId: string, download = false): string {
   return `/api/admin/resumes/${candidateId}/file${download ? "?download=1" : ""}`;
+}
+
+export function reviewHref(job?: string, candidateId?: string, candidateIds?: string[]): string {
+  const params = new URLSearchParams();
+  if (job) params.set("job", job);
+  if (candidateId) params.set("candidate", candidateId);
+  if (candidateIds && candidateIds.length) params.set("candidates", candidateIds.slice(0, 25).join(","));
+  const query = params.toString();
+  return query ? `/admin/review?${query}` : "/admin/review";
+}
+
+export function resumeUpdateHref(job: string, candidateId: string): string {
+  return `/admin/resume-update?${new URLSearchParams({ job, candidate: candidateId })}`;
 }
 
 export function money(amount: number | null | undefined): string {

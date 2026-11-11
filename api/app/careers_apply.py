@@ -6,6 +6,7 @@ recruiter role on the server. The visitor never receives a recruiter session.
 
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
+import json
 import re
 import threading
 import uuid
@@ -15,8 +16,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.admin.pipeline import SALARY_MAX
+from app.admin.resume_docx import clean_justification, justification_error
 from app.admin.routes import _store_resume
-from app.models import AuditLog, Job, JobApplication, Submission, SubmissionComment, SubmissionEvent
+from app.models import AuditLog, Job, JobApplication, ResumeUpdate, Submission, SubmissionComment, SubmissionEvent
+from app.public.resume_check import CheckError, check_resume
 from app.notify import ApplicationNotice
 
 _LOCK = threading.Lock()
@@ -78,6 +81,7 @@ def submit_application(
     note: str,
     filename: str,
     data: bytes,
+    justifications: str = "",
 ) -> dict:
     code = requisition_code.strip()
     name = " ".join(full_name.split())
@@ -119,12 +123,14 @@ def submit_application(
             _fail(400, f"{label} has to be a past date.")
     if not data:
         _fail(400, "Upload a PDF, DOC, DOCX, or TXT résumé.")
+    notes = _candidate_notes(justifications)
 
     job = session.scalar(select(Job).where(Job.requisition_code == code))
     if job is None:
         _fail(404, "That job is not on file.")
     if job.status != "open":
         _fail(400, "That job is no longer open.")
+    accepted = _accepted_notes(job, filename or "resume.txt", data, notes)
 
     try:
         stored = _store_resume(session, filename or "resume.txt", data, llm, email_hint=mail)
@@ -151,6 +157,7 @@ def submit_application(
 
     salary_note = f"Careers site. Can start {start.isoformat()}. {years_experience} years."
     now = datetime.now(timezone.utc)
+    _keep_notes(session, candidate, job, accepted, mail, now)
     row = session.scalar(select(Submission).where(Submission.candidate_id == candidate.id, Submission.job_id == job.id))
     created = row is None
     if row is None:
@@ -232,6 +239,7 @@ def submit_application(
         f"Attested TS/SCI with Full Scope Polygraph."
         + (f" {' · '.join(dates)}." if dates else "")
         + (f" Note: {remark}" if remark else "")
+        + (f" Wrote {len(accepted)} requirement justification{'s' if len(accepted) != 1 else ''}." if accepted else "")
     )
     session.add(SubmissionComment(submission_id=row.id, body=comment[:4000], created_at=now, updated_at=now))
     session.add(AuditLog(actor="careers", action="job_application", subject_id=row.id, outcome="submitted"))
@@ -265,3 +273,68 @@ def submit_application(
             else f"Your application for {job.requisition_code} is updated. It stays in the pipeline."
         ),
     }
+
+
+def _candidate_notes(raw: str) -> list[dict]:
+    text = (raw or "").strip()
+    if not text:
+        return []
+    if len(text) > 80_000:
+        _fail(400, "The requirement notes are too long.")
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        _fail(400, "The requirement notes could not be read. Try again.")
+        return []
+    if not isinstance(data, list) or len(data) > 40:
+        _fail(400, "Send one note for each missing requirement.")
+    notes = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        line = " ".join(str(item.get("line") or "").split())
+        justification = clean_justification(str(item.get("justification") or ""))
+        if line and justification:
+            notes.append({"line": line, "justification": justification})
+    return notes
+
+
+def _accepted_notes(job: Job, filename: str, data: bytes, notes: list[dict]) -> list[dict]:
+    """Keep a sentence only when that requirement is actually missing on this résumé."""
+    if not notes:
+        return []
+    try:
+        checked = check_resume(job, filename, data)
+    except CheckError:
+        _fail(400, "The résumé could not be checked, so those requirement notes were not saved. Leave them blank or upload a text-based file.")
+        return []
+    missing: dict[str, str] = {}
+    for kind, key in (("Mandatory", "required"), ("Desired", "desired")):
+        for item in checked[key]["items"]:
+            if not item["met"] and item.get("line"):
+                missing[item["line"]] = kind
+    accepted = []
+    for note in notes:
+        line = note["line"]
+        if line not in missing:
+            continue
+        problem = justification_error(note["justification"])
+        if problem:
+            _fail(400, f"{problem} Leave a missing requirement blank if you have nothing to add.")
+        accepted.append({"line": line, "kind": missing[line], "justification": note["justification"]})
+    return accepted
+
+
+def _keep_notes(session: Session, candidate, job: Job, accepted: list[dict], author: str, now: datetime) -> None:
+    if not accepted:
+        return
+    row = session.scalar(select(ResumeUpdate).where(ResumeUpdate.candidate_id == candidate.id, ResumeUpdate.job_id == job.id))
+    if row is None:
+        row = ResumeUpdate(candidate_id=candidate.id, job_id=job.id, items=[])
+        session.add(row)
+    kept = {item["line"]: item for item in (row.items or []) if isinstance(item, dict) and item.get("line")}
+    for item in accepted:
+        kept[item["line"]] = item
+    row.items = list(kept.values())
+    row.updated_by = author
+    row.updated_at = now

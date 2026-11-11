@@ -8,6 +8,7 @@ import { copyText } from "@/components/candidate-mail";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useCan } from "@/lib/desk";
+import { reviewHref } from "@/lib/pipeline";
 import { Textarea } from "@/components/ui/textarea";
 
 type JobRow = {
@@ -359,6 +360,9 @@ export default function JobsPage() {
               <Link href={`/admin/jobs/${job.requisition_code}#submissions`} className="text-pine underline">
                 {job.submission_count || 0} submitted
               </Link>
+              <Link href={reviewHref(job.requisition_code)} className="text-pine underline">
+                Review candidates
+              </Link>
               <Link href={`/admin/jobs/${job.requisition_code}#candidates`} className="text-pine underline">
                 Candidates
               </Link>
@@ -404,6 +408,9 @@ export default function JobsPage() {
                 <td className="px-3 py-2">
                   <Link href={`/admin/jobs/${job.requisition_code}#submissions`} className="text-pine underline">
                     {job.submission_count || 0}
+                  </Link>
+                  <Link href={reviewHref(job.requisition_code)} className="ml-3 whitespace-nowrap text-pine underline">
+                    Review candidates
                   </Link>
                 </td>
                 <td className="px-3 py-2">

@@ -204,7 +204,7 @@ function ResumeUpdatePage() {
         <BackButton fallback="/admin/review" />
         <h1 className="page-title mt-2">Update a résumé</h1>
         <p className="page-lead">
-          Write a justification for each requirement this résumé does not cover. Admins and recruiters can save the notes and download a résumé that includes them. The file the candidate uploaded stays as it is.
+          Write a justification for each requirement this résumé does not cover. A candidate may already have written some of these when they applied. Admins and recruiters can edit the notes and download a résumé that includes them. The file the candidate uploaded stays as it is.
         </p>
       </div>
 

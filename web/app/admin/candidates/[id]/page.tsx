@@ -11,7 +11,7 @@ import { useCan } from "@/lib/desk";
 import { SubmissionForm } from "@/components/submission-form";
 import { StageBadge } from "@/components/stage-badge";
 import { Button } from "@/components/ui/button";
-import { errorMessage, money, personName, resumeFileUrl, when, type Note, type SubmissionCard } from "@/lib/pipeline";
+import { errorMessage, money, personName, resumeFileUrl, reviewHref, when, type Note, type SubmissionCard } from "@/lib/pipeline";
 
 type Profile = {
   id: string;
@@ -131,6 +131,9 @@ export default function CandidateProfilePage() {
           <Button asChild variant="outline">
             <Link href={`/admin/match?id=${profile.id}`}>Rank against jobs</Link>
           </Button>
+          <Button asChild>
+            <Link href={reviewHref(undefined, profile.id)}>Review against a job</Link>
+          </Button>
           <Button type="button" onClick={() => setComposer((value) => !value)}>
             Submit to a job
           </Button>
@@ -149,14 +152,7 @@ export default function CandidateProfilePage() {
         <section className="panel p-4">
           <h2 className="font-serif text-xl">Submit to a job</h2>
           <div className="mt-3">
-            <SubmissionForm
-              candidateId={profile.id}
-              candidateName={personName(profile)}
-              onCreated={() => {
-                setComposer(false);
-                load();
-              }}
-            />
+            <SubmissionForm candidateId={profile.id} candidateName={personName(profile)} onCreated={load} />
           </div>
         </section>
       )}
@@ -171,23 +167,23 @@ export default function CandidateProfilePage() {
         <ul className="mt-4 flex flex-col gap-2">
           {submissions.map((row) => (
             <li key={row.id}>
-              <Link
-                href={`/admin/submissions/${row.id}`}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line px-3 py-3 transition hover:border-pine/40 hover:bg-desk/50"
-              >
-                <span>
-                  <span className="block text-sm font-medium">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line px-3 py-3 transition hover:border-pine/40 hover:bg-desk/50">
+                <Link href={`/admin/submissions/${row.id}`} className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium hover:text-pine">
                     <span className="font-mono text-pine">{row.job.requisition_code}</span> {row.job.title || "Untitled job"}
                   </span>
                   <span className="block text-xs text-ink/60">
                     {row.job.location || "No city"} · {row.job.status} · updated {when(row.updated_at)}
                   </span>
-                </span>
-                <span className="flex items-center gap-3">
+                </Link>
+                <span className="flex flex-wrap items-center gap-3">
                   <span className="text-sm text-ink/70">{money(row.salary_usd)}</span>
                   <StageBadge stage={row.stage} label={row.stage_label} />
+                  <Button asChild size="sm">
+                    <Link href={reviewHref(row.job.requisition_code, profile.id)}>Review</Link>
+                  </Button>
                 </span>
-              </Link>
+              </div>
             </li>
           ))}
         </ul>
