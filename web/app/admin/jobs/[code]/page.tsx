@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
+import { ComposeEmail } from "@/components/compose-email";
 import { JobSubmissions, type SubmissionIndex } from "@/components/job-submissions";
 import { LinkedInSource } from "@/components/linkedin-source";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +17,7 @@ import { candidateJobUrl, copyRich, postingBlocks, postingEmail } from "@/lib/po
 import { downloadCsv, percent } from "@/lib/csv";
 import { useCan } from "@/lib/desk";
 import { readCache, writeCache } from "@/lib/page-cache";
+import { outreachBody, outreachSubject } from "@/lib/outreach";
 import { resumeFileUrl, reviewHref } from "@/lib/pipeline";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -34,6 +36,7 @@ type JobCandidate = {
   desired_hit: number;
   desired_total: number;
   meets_bar: boolean;
+  matched_lines?: string[];
 };
 
 type JobDetail = {
@@ -44,6 +47,7 @@ type JobDetail = {
   location: string | null;
   status: string;
   close_note: string | null;
+  archived_at?: string | null;
   description_source: string;
   description_text: string | null;
   posting_paragraphs?: string[];
@@ -85,6 +89,9 @@ export default function JobDetailPage() {
   const [submitted, setSubmitted] = useState<SubmissionIndex>({});
   const [submissionReload, setSubmissionReload] = useState(0);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
+  const [composeId, setComposeId] = useState<string | null>(null);
+  const [mailSubject, setMailSubject] = useState("");
+  const [mailBody, setMailBody] = useState("");
 
   useEffect(() => {
     function showJob(data: JobDetail) {
@@ -189,6 +196,52 @@ export default function JobDetailPage() {
       setMessage("Open again.");
     } catch {
       setMessage("The job was not reopened.");
+    } finally {
+      setClosing(false);
+    }
+  }
+
+  async function archiveJob() {
+    setClosing(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/admin/jobs/${code}/archive`, { method: "POST" });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) {
+        router.push("/admin/login");
+        return;
+      }
+      if (!response.ok) {
+        setMessage(data.detail || "The job was not archived.");
+        return;
+      }
+      setJob(data);
+      setMessage("Archived. It stays closed, and a later recrawl will not open it.");
+    } catch {
+      setMessage("The job was not archived.");
+    } finally {
+      setClosing(false);
+    }
+  }
+
+  async function unarchiveJob() {
+    setClosing(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/admin/jobs/${code}/unarchive`, { method: "POST" });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) {
+        router.push("/admin/login");
+        return;
+      }
+      if (!response.ok) {
+        setMessage(data.detail || "The job was not returned to the closed list.");
+        return;
+      }
+      setJob(data);
+      setMessage("Back on the closed list.");
+    } catch {
+      setMessage("The job was not returned to the closed list.");
     } finally {
       setClosing(false);
     }
@@ -435,7 +488,7 @@ export default function JobDetailPage() {
       {!canEdit ? (
         job.status === "closed" && (
           <section className="panel p-4">
-            <h2 className="font-serif text-xl">Closed</h2>
+            <h2 className="font-serif text-xl">{job.archived_at ? "Archived" : "Closed"}</h2>
             <p className="mt-2 text-sm leading-6">{job.close_note || "No note was saved."}</p>
           </section>
         )
@@ -453,12 +506,22 @@ export default function JobDetailPage() {
         </form>
       ) : (
         <section className="panel p-4">
-          <h2 className="font-serif text-xl">Closed</h2>
+          <h2 className="font-serif text-xl">{job.archived_at ? "Archived" : "Closed"}</h2>
           <p className="mt-2 text-sm leading-6">{job.close_note || "No note was saved."}</p>
+          {job.archived_at && <p className="mt-2 text-sm text-ink/70">A recrawl will not open this job.</p>}
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Button type="button" variant="outline" disabled={closing} onClick={reopenJob}>
               {closing && !confirmDelete ? "Reopening…" : "Reopen job"}
             </Button>
+            {job.archived_at ? (
+              <Button type="button" variant="outline" disabled={closing} onClick={unarchiveJob}>
+                Return to closed
+              </Button>
+            ) : (
+              <Button type="button" variant="outline" disabled={closing} onClick={archiveJob}>
+                Archive
+              </Button>
+            )}
             {canDelete &&
               (confirmDelete ? (
                 <>
@@ -553,7 +616,7 @@ export default function JobDetailPage() {
                     <p className="text-xs text-ink/80">Location: {shown(candidate.location)}</p>
                   </div>
                 </div>
-                <div className="flex gap-3 text-sm">
+                <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-sm">
                   {existing ? (
                     <Link href={`/admin/submissions/${existing.id}`} className="text-pine hover:underline">
                       {existing.label}
@@ -574,6 +637,17 @@ export default function JobDetailPage() {
                   <Link href={`/admin/review?job=${job.requisition_code}&candidate=${candidate.id}`} className="text-pine hover:underline">
                     Review
                   </Link>
+                  <button
+                    type="button"
+                    className="text-pine hover:underline"
+                    onClick={() => {
+                      setComposeId(candidate.id);
+                      setMailSubject(outreachSubject(job));
+                      setMailBody(outreachBody(candidate, job));
+                    }}
+                  >
+                    Compose Email
+                  </button>
                   <Link href={`/admin/match?id=${candidate.id}`} className="text-pine hover:underline">
                     Open résumé
                   </Link>
@@ -588,6 +662,19 @@ export default function JobDetailPage() {
                 <CandidateScore label="Mandatory" percent={candidate.mandatory_pct} hit={candidate.mandatory_hit} total={candidate.mandatory_total} strong={candidate.meets_bar} />
                 <CandidateScore label="Desired" percent={candidate.desired_pct} hit={candidate.desired_hit} total={candidate.desired_total} strong={false} />
               </div>
+              {composeId === candidate.id && (
+                <ComposeEmail
+                  subject={mailSubject}
+                  body={mailBody}
+                  onSubject={setMailSubject}
+                  onBody={setMailBody}
+                  onRestore={() => {
+                    setMailSubject(outreachSubject(job));
+                    setMailBody(outreachBody(candidate, job));
+                  }}
+                  onClose={() => setComposeId(null)}
+                />
+              )}
             </article>
             );
           })}

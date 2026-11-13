@@ -319,7 +319,7 @@ def overview(session: Session = Depends(require_desk)):
     return {
         "jobs": {
             "open": count(open_jobs),
-            "closed": count(select(Job).where(Job.status == "closed")),
+            "closed": count(select(Job).where(Job.status == "closed", Job.archived_at.is_(None))),
             "needs_review": count(open_jobs.where(Job.needs_review.is_(True))),
             "no_description": count(open_jobs.where(func.coalesce(Job.description_text, "") == "")),
         },
@@ -487,6 +487,7 @@ def job_candidates(code: str, session: Session = Depends(require_desk)):
                 "desired_total": desired["total"],
                 "desired_any": desired["hit"] > 0,
                 "meets_bar": mandatory_pct is not None and mandatory_pct >= MANDATORY_BAR,
+                "matched_lines": list(mandatory["matched"] or [])[:6],
             }
         )
     ranked.sort(
@@ -529,6 +530,33 @@ def reopen_job(code: str, session: Session = Depends(admin_only("edit_jobs"))):
     job.status = "open"
     job.closed_manually = False
     job.close_note = None
+    job.archived_at = None
+    session.commit()
+    return _job_out(job)
+
+
+@router.post("/jobs/{code}/archive")
+def archive_job(code: str, session: Session = Depends(admin_only("edit_jobs"))):
+    job = session.scalar(select(Job).where(Job.requisition_code == code))
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    if job.status != "closed":
+        raise HTTPException(status_code=400, detail="Close the job before archiving it.")
+    if job.archived_at is None:
+        job.archived_at = datetime.now(timezone.utc)
+        job.closed_manually = True
+    session.commit()
+    return _job_out(job)
+
+
+@router.post("/jobs/{code}/unarchive")
+def unarchive_job(code: str, session: Session = Depends(admin_only("edit_jobs"))):
+    job = session.scalar(select(Job).where(Job.requisition_code == code))
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    job.archived_at = None
+    if job.status != "closed":
+        job.status = "closed"
     session.commit()
     return _job_out(job)
 
@@ -1366,6 +1394,7 @@ def _job_out(job: Job) -> dict:
         "status": job.status,
         "close_note": job.close_note,
         "closed_manually": bool(job.closed_manually),
+        "archived_at": job.archived_at.isoformat() if job.archived_at else None,
         "program_tag": job.program_tag,
         "external_req": job.external_req,
         "funding": job.funding if job.funding in {"proposed", "funded"} else "funded",

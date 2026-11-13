@@ -114,6 +114,59 @@ def test_recrawl_brings_back_a_deleted_job_that_is_still_listed(db):
     assert {row for row in db.scalars(select(Job.requisition_code)).all()} == {"A1001", "A1002"}
 
 
+def test_archive_hides_a_closed_job_and_a_crawl_does_not_reopen_it(db):
+    from datetime import datetime, timezone
+
+    db.add(
+        Job(
+            requisition_code="A1001",
+            title="Old title",
+            location="Chantilly, VA",
+            status="closed",
+            close_note="filled",
+            closed_manually=True,
+            archived_at=datetime.now(timezone.utc),
+            description_text="Build.",
+            must_have_skills=[],
+            nice_to_have_skills=[],
+        )
+    )
+    db.add(
+        Job(
+            requisition_code="A1009",
+            title="Still open",
+            location="Herndon, VA",
+            status="open",
+            description_text="Build.",
+            must_have_skills=[],
+            nice_to_have_skills=[],
+        )
+    )
+    db.commit()
+    client = _client()
+    listed = client.get("/admin/jobs")
+    assert listed.status_code == 200
+    row = next(job for job in listed.json()["jobs"] if job["requisition_code"] == "A1001")
+    assert row["archived_at"]
+    assert row["status"] == "closed"
+
+    open_try = client.post("/admin/jobs/A1009/archive")
+    assert open_try.status_code == 400
+
+    state = run_crawl(db, MapFetcher({CAREERS: LISTING}), CAREERS, RecordingLLM(), RecordingEmbedder())
+    assert state.last_ok is True
+    db.expire_all()
+    kept = db.scalar(select(Job).where(Job.requisition_code == "A1001"))
+    assert kept.status == "closed"
+    assert kept.archived_at is not None
+    assert kept.close_note == "filled"
+
+    returned = client.post("/admin/jobs/A1001/unarchive")
+    assert returned.status_code == 200
+    assert returned.json()["archived_at"] is None
+    assert returned.json()["status"] == "closed"
+
+
 def test_a_deleted_job_stays_off_the_desk_when_the_listing_omits_it(db):
     db.add(RemovedJob(requisition_code="Z9001"))
     db.commit()

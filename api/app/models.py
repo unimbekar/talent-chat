@@ -33,6 +33,7 @@ class Job(Base):
     status: Mapped[str] = mapped_column(Text, default="open", index=True)
     close_note: Mapped[str | None] = mapped_column(Text)
     closed_manually: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     source_line: Mapped[str | None] = mapped_column(Text)
     source_url: Mapped[str | None] = mapped_column(Text)
     needs_review: Mapped[bool] = mapped_column(Boolean, default=False)

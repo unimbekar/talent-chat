@@ -151,7 +151,7 @@ def run_crawl(
         job.program_tag = row.program_tag
         job.external_req = row.external_req
         job.funding = row.funding
-        if not job.closed_manually:
+        if job.archived_at is None and not job.closed_manually:
             job.status = row.status
             if job.status != "closed":
                 job.close_note = None

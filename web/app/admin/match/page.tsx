@@ -8,7 +8,9 @@ import { BackButton } from "@/components/back-button";
 import { Badge } from "@/components/ui/badge";
 import { useCan } from "@/lib/desk";
 import { readCache, writeCache } from "@/lib/page-cache";
+import { outreachBody, outreachSubject } from "@/lib/outreach";
 import { resumeFileUrl } from "@/lib/pipeline";
+import { ComposeEmail } from "@/components/compose-email";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -402,6 +404,7 @@ function MatchPage() {
               onRequiredChange={(value) => setRequiredByJob((current) => ({ ...current, [row.requisition_code]: value }))}
               resumeNames={resumeNames}
               candidateId={profile?.id || candidateId}
+              candidateName={profile?.full_name || null}
               submission={submitted[row.requisition_code]}
               submitting={submittingCode === row.requisition_code}
               onSubmit={() => submitTo(row.requisition_code)}
@@ -489,6 +492,7 @@ function MatchCard({
   onRequiredChange,
   resumeNames,
   candidateId,
+  candidateName,
   submission,
   submitting,
   onSubmit,
@@ -498,12 +502,22 @@ function MatchCard({
   onRequiredChange: (value: string) => void;
   resumeNames: string[];
   candidateId: string;
+  candidateName: string | null;
   submission?: SubmissionLink;
   submitting: boolean;
   onSubmit: () => void;
 }) {
   const requirement = requirementStatus(requiredText, resumeNames);
   const strong = row.meets_bar && requirement.missing.length === 0;
+  const [mailOpen, setMailOpen] = useState(false);
+  const [mailSubject, setMailSubject] = useState("");
+  const [mailBody, setMailBody] = useState("");
+  const person = {
+    full_name: candidateName,
+    mandatory_pct: row.mandatory_pct,
+    meets_bar: row.meets_bar,
+    matched_lines: row.required_matched,
+  };
   return (
     <article className={`rounded-xl border bg-card p-4 ${strong ? "border-pine" : "border-line"}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -540,6 +554,17 @@ function MatchCard({
               <Link href={`/admin/review?job=${row.requisition_code}&candidate=${candidateId}`} className="text-pine hover:underline">
                 Review
               </Link>
+              <button
+                type="button"
+                className="text-pine hover:underline"
+                onClick={() => {
+                  setMailSubject(outreachSubject(row));
+                  setMailBody(outreachBody(person, row));
+                  setMailOpen(true);
+                }}
+              >
+                Compose Email
+              </button>
               <a href={resumeFileUrl(candidateId)} target="_blank" rel="noopener noreferrer" className="text-pine hover:underline">
                 Open résumé
               </a>
@@ -584,6 +609,19 @@ function MatchCard({
         </div>
       )}
       {row.clearance_flag === "clearance_short" && <p className="mt-2 text-xs">Clearance on the résumé is below this job.</p>}
+      {mailOpen && (
+        <ComposeEmail
+          subject={mailSubject}
+          body={mailBody}
+          onSubject={setMailSubject}
+          onBody={setMailBody}
+          onRestore={() => {
+            setMailSubject(outreachSubject(row));
+            setMailBody(outreachBody(person, row));
+          }}
+          onClose={() => setMailOpen(false)}
+        />
+      )}
     </article>
   );
 }

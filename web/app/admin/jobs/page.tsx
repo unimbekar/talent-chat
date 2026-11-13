@@ -21,6 +21,7 @@ type JobRow = {
   location: string | null;
   status: string;
   close_note: string | null;
+  archived_at?: string | null;
   description_source: string;
   needs_review: boolean;
   last_seen_at: string | null;
@@ -160,6 +161,53 @@ export default function JobsPage() {
       await load();
     } catch {
       setMessage("The job was not reopened.");
+    } finally {
+      setCloseBusy(false);
+    }
+  }
+
+  async function archiveJob(code: string) {
+    setCloseBusy(true);
+    setMessage("");
+    setError("");
+    try {
+      const response = await fetch(`/api/admin/jobs/${code}/archive`, { method: "POST" });
+      if (response.status === 401) {
+        router.push("/admin/login");
+        return;
+      }
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        setMessage(data.detail || "The job was not archived.");
+        return;
+      }
+      setMessage("Archived. It stays closed, and a later recrawl will not open it.");
+      await load();
+    } catch {
+      setMessage("The job was not archived.");
+    } finally {
+      setCloseBusy(false);
+    }
+  }
+
+  async function unarchiveJob(code: string) {
+    setCloseBusy(true);
+    setMessage("");
+    setError("");
+    try {
+      const response = await fetch(`/api/admin/jobs/${code}/unarchive`, { method: "POST" });
+      if (response.status === 401) {
+        router.push("/admin/login");
+        return;
+      }
+      if (!response.ok) {
+        setMessage("The job was not returned to the closed list.");
+        return;
+      }
+      setMessage("Back on the closed list.");
+      await load();
+    } catch {
+      setMessage("The job was not returned to the closed list.");
     } finally {
       setCloseBusy(false);
     }
@@ -453,12 +501,12 @@ export default function JobsPage() {
           </tbody>
         </table>
       </div>
-      {(screen?.jobs || []).some((job) => job.status === "closed") && (
+      {(screen?.jobs || []).some((job) => job.status === "closed" && !job.archived_at) && (
         <section className="text-sm text-ink/70">
           <h2 className="font-medium text-ink">Closed jobs</h2>
           <ul className="mt-2 flex flex-col gap-2">
             {screen?.jobs
-              .filter((job) => job.status === "closed")
+              .filter((job) => job.status === "closed" && !job.archived_at)
               .map((job) => (
                 <li key={job.requisition_code}>
                   <Link href={`/admin/jobs/${job.requisition_code}#details`} className="font-mono text-pine underline">
@@ -478,9 +526,14 @@ export default function JobsPage() {
                   {(canEdit || canDelete) && (
                     <div className="mt-1 flex flex-wrap items-center gap-2">
                       {canEdit && (
-                        <Button type="button" variant="outline" disabled={closeBusy} onClick={() => reopenJob(job.requisition_code)}>
-                          Reopen
-                        </Button>
+                        <>
+                          <Button type="button" variant="outline" disabled={closeBusy} onClick={() => reopenJob(job.requisition_code)}>
+                            Reopen
+                          </Button>
+                          <Button type="button" variant="outline" disabled={closeBusy} onClick={() => archiveJob(job.requisition_code)}>
+                            Archive
+                          </Button>
+                        </>
                       )}
                       {canDelete && confirmDelete === job.requisition_code ? (
                         <>
@@ -497,6 +550,40 @@ export default function JobsPage() {
                           Delete
                         </Button>
                       ) : null}
+                    </div>
+                  )}
+                </li>
+              ))}
+          </ul>
+        </section>
+      )}
+      {(screen?.jobs || []).some((job) => job.archived_at) && (
+        <section className="text-sm text-ink/70">
+          <h2 className="font-medium text-ink">Archived jobs</h2>
+          <p className="mt-1">These stay closed. A recrawl does not open them.</p>
+          <ul className="mt-2 flex flex-col gap-2">
+            {screen?.jobs
+              .filter((job) => job.archived_at)
+              .map((job) => (
+                <li key={job.requisition_code}>
+                  <Link href={`/admin/jobs/${job.requisition_code}#details`} className="font-mono text-pine underline">
+                    {job.requisition_code}
+                  </Link>
+                  {job.external_req ? <span className="font-mono"> {job.external_req}</span> : null}{" "}
+                  <Link href={`/admin/jobs/${job.requisition_code}#details`} className="text-pine underline">
+                    {job.title || "Untitled job"}
+                  </Link>
+                  {" · "}
+                  {job.location} · {fundingLabel(job)} · archived
+                  <p className="text-ink">{job.close_note || "No note was saved."}</p>
+                  {canEdit && (
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <Button type="button" variant="outline" disabled={closeBusy} onClick={() => unarchiveJob(job.requisition_code)}>
+                        Return to closed
+                      </Button>
+                      <Button type="button" variant="outline" disabled={closeBusy} onClick={() => reopenJob(job.requisition_code)}>
+                        Reopen
+                      </Button>
                     </div>
                   )}
                 </li>
